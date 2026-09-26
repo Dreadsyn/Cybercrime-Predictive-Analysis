@@ -1,0 +1,163 @@
+"""
+Automated Test Suite for FastAPI REST Endpoints & Service Layer.
+
+Tests:
+1. Health check (/api/health)
+2. Dashboard KPIs and distributions (/api/stats)
+3. ATM coordinates and metadata (/api/atms)
+4. Zone risk hotspots (/api/hotspots)
+5. Paginated complaints querying (/api/complaints)
+6. Real-time predictive analytics inference (/api/predict)
+7. Input schema validation error handling (Pydantic ValidationError)
+8. Prediction history retrieval (/api/predictions)
+9. Model provenance and verified Phase 2 metrics (/api/model-info)
+"""
+
+import sys
+from pathlib import Path
+import pytest
+from pydantic import ValidationError
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR))
+
+from backend.app.main import (
+    get_dashboard_stats,
+    get_model_information,
+    get_zone_hotspots,
+    health_check,
+    list_atms,
+    list_complaints,
+    list_predictions,
+    predict_cashout_location,
+    serve_dashboard,
+)
+from backend.app.schemas import PredictionRequest
+
+
+def test_health_endpoint():
+    """Verifies that the API service is online and healthy."""
+    data = health_check()
+    assert data["status"] == "HEALTHY"
+    assert data["version"] == "1.0.0"
+
+
+def test_stats_endpoint():
+    """Verifies executive KPI metrics from SQLite database."""
+    data = get_dashboard_stats()
+    assert data["total_complaints"] == 4000
+    assert data["total_cashouts"] == 3295
+    assert data["active_atms"] == 50
+    assert "INVESTMENT_FRAUD" in data["crime_category_breakdown"]
+    assert "UPI" in data["payment_channel_breakdown"]
+    assert "ZONE_CENTRAL" in data["zone_distribution"]
+
+
+def test_atms_endpoint():
+    """Verifies ATM network listing for map rendering."""
+    atms = list_atms()
+    assert len(atms) == 50
+    first_atm = atms[0]
+    assert "atm_id" in first_atm
+    assert "latitude" in first_atm
+    assert "longitude" in first_atm
+    assert "bank_code" in first_atm
+    assert "zone_id" in first_atm
+    assert first_atm["latitude"] > 20.0
+    assert first_atm["longitude"] > 70.0
+
+
+def test_hotspots_endpoint():
+    """Verifies aggregated area-level risk zones across 5 sectors."""
+    hotspots = get_zone_hotspots()
+    assert len(hotspots) == 5
+    zone_ids = {h["zone_id"] for h in hotspots}
+    assert zone_ids == {"ZONE_CENTRAL", "ZONE_NORTH", "ZONE_SOUTH", "ZONE_EAST", "ZONE_WEST"}
+
+
+def test_complaints_pagination():
+    """Verifies paginated retrieval of complaints with query filters."""
+    complaints = list_complaints(limit=15, offset=0, category="INVESTMENT_FRAUD", zone=None)
+    assert len(complaints) <= 15
+    for c in complaints:
+        assert c["crime_category"] == "INVESTMENT_FRAUD"
+        assert "complaint_id" in c
+        assert "reported_amount" in c
+
+
+def test_predict_endpoint_valid():
+    """Verifies real-time prediction pipeline and actionable intelligence generation."""
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=85000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=35.0,
+        incident_hour=15,
+        incident_day_of_week=4,
+        complaint_timestamp="2026-09-26 15:30:00",
+        complaint_id="CMP-TEST-UNIT-001",
+    )
+    pred = predict_cashout_location(req)
+
+    assert pred["complaint_id"] == "CMP-TEST-UNIT-001"
+    assert pred["predicted_atm_id"].startswith("ATM-")
+    assert pred["predicted_zone_id"].startswith("ZONE_")
+    assert 0.0 <= pred["confidence_score"] <= 1.0
+    assert len(pred["top_candidates"]) == 5
+    assert pred["risk_level"] in ["CRITICAL", "HIGH", "MODERATE", "LOW"]
+    assert len(pred["explanation_codes"]) >= 1
+    assert pred["predicted_window_start"] <= pred["predicted_window_end"]
+
+    # Verify candidate probabilities are sorted descending
+    cand_probs = [c["probability"] for c in pred["top_candidates"]]
+    assert cand_probs == sorted(cand_probs, reverse=True)
+
+
+def test_predict_endpoint_validation_error():
+    """Verifies Pydantic rejects invalid or negative inputs."""
+    with pytest.raises(ValidationError):
+        PredictionRequest(
+            crime_category="INVESTMENT_FRAUD",
+            reported_amount=-500.0,  # Negative amount rejected
+            payment_channel="UPI",
+            mule_bank_code="BANK_SBI_SYNTH",
+            mule_account_tier="NEW_DIGITAL",
+            mule_branch_zone="ZONE_WEST",
+            reporting_delay_mins=35.0,
+            incident_hour=15,
+            incident_day_of_week=4,
+        )
+
+
+def test_predictions_audit_log():
+    """Verifies that generated predictions are persisted and queryable."""
+    preds = list_predictions(limit=10)
+    assert len(preds) >= 1
+    assert "prediction_id" in preds[0]
+    assert "top_candidates" in preds[0]
+    assert isinstance(preds[0]["top_candidates"], list)
+
+
+def test_model_info_matches_phase2():
+    """Verifies that /api/model-info serves immutable Phase 2 Partition 3 metrics."""
+    info = get_model_information()
+    assert info["evaluation_partition"] == "P3_FUTURE_TEST_ONLY"
+    metrics = info["p3_eval_metrics"]
+    assert metrics["top1_spatial_accuracy_pct"] == 10.17
+    assert metrics["top3_spatial_accuracy_pct"] == 31.71
+    assert metrics["top5_spatial_accuracy_pct"] == 41.88
+    assert metrics["zone_level_accuracy_pct"] == 68.89
+    assert metrics["calibrated_brier_score"] == 0.9726
+    assert metrics["calibrated_log_loss"] == 3.5199
+    assert metrics["temporal_window_coverage_pct"] == 50.38
+
+
+def test_dashboard_serve_endpoint():
+    """Verifies that root endpoint serves the index.html dashboard file."""
+    res = serve_dashboard()
+    assert res.status_code == 200
+    assert "index.html" in str(res.path)
+

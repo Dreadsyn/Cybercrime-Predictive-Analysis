@@ -1,0 +1,11 @@
+# Cybercrime Cash Withdrawal Predictive Analytics Framework
+# Verified Python 3.14 compatible dependencies
+
+fastapi==0.141.1
+uvicorn==0.54.0
+pydantic==2.13.5
+pandas==3.0.6
+numpy==2.5.3
+scikit-learn==1.9.1
+joblib==1.6.0
+pytest==9.1.1

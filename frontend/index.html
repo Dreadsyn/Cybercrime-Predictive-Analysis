@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cybercrime Cash Withdrawal Predictive Analytics Framework</title>
+
+  <!-- Leaflet.js v1.9.4 (CDN) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Chart.js v4.4.1 (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- Custom Refined Dashboard Styling -->
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+
+  <!-- 1. Top Navbar / Header -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="brand-shield">&#128737;</div>
+      <div class="brand-text">
+        <h1>Cybercrime Cash Withdrawal Predictive Analytics</h1>
+        <div class="brand-meta">
+          <span>Predicting Likely Cash-Out Locations for Law Enforcement Intervention</span>
+          <span class="tag-synthetic">Synthetic &amp; Non-PII Research Prototype</span>
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="status-pill">
+        <span class="pulse-dot"></span>
+        <span>AI Pipeline Online</span>
+      </div>
+      <button id="btnModelInfo" class="btn-audit" type="button" title="View Model Provenance and Verified Evaluation Metrics">
+        Model Provenance &amp; Evaluation Audit
+      </button>
+    </div>
+  </header>
+
+  <!-- 2. Contextual Overview Strip & Workflow Ribbon -->
+  <section class="context-strip">
+    <div class="overview-counters">
+      <div class="counter-item">
+        <span class="counter-label">Complaints</span>
+        <span class="counter-val" id="kpiTotalComplaints">4,000</span>
+      </div>
+      <div class="counter-item">
+        <span class="counter-label">Monitored ATMs</span>
+        <span class="counter-val" id="kpiActiveATMs">50</span>
+      </div>
+      <div class="counter-item">
+        <span class="counter-label">Cash-Out Events</span>
+        <span class="counter-val" id="kpiCashouts">3,295</span>
+      </div>
+      <div class="counter-item">
+        <span class="counter-label">Dispatched Alerts</span>
+        <span class="counter-val" id="kpiAlerts">0</span>
+      </div>
+    </div>
+
+    <!-- 5-Step Operational Workflow Ribbon -->
+    <div class="workflow-ribbon" title="Operational Workflow Progression">
+      <span class="wf-step active">1. Complaint Intake</span>
+      <span class="wf-arrow">&rarr;</span>
+      <span class="wf-step active">2. Rail Velocity</span>
+      <span class="wf-arrow">&rarr;</span>
+      <span class="wf-step active">3. Spatial Inference</span>
+      <span class="wf-arrow">&rarr;</span>
+      <span class="wf-step active">4. Intercept Window</span>
+      <span class="wf-arrow">&rarr;</span>
+      <span class="wf-step active">5. Tactical Dispatch</span>
+    </div>
+  </section>
+
+  <!-- 3. Main Operational Workbench (Split View) -->
+  <main class="operational-grid">
+
+    <!-- Left Column: Prediction Workbench & Results -->
+    <section class="workbench-card">
+      <div class="card-heading">
+        <span>Real-Time Predictive Forecast</span>
+        <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: normal;">Scenario presets:</span>
+      </div>
+
+      <!-- Quick Preset Scenario Chips -->
+      <div class="presets-group">
+        <button type="button" class="btn-preset" data-preset="urgent_investment">Urgent Investment Scam</button>
+        <button type="button" class="btn-preset" data-preset="upi_phishing">UPI Phishing Sprint</button>
+        <button type="button" class="btn-preset" data-preset="delayed_loan">Delayed Loan Fraud</button>
+      </div>
+
+      <!-- Complaint Intake Form (Grouped Fieldsets) -->
+      <form id="predictionForm" autocomplete="off">
+        
+        <!-- Group 1: Incident Classification -->
+        <fieldset class="form-fieldset">
+          <legend class="form-legend">Incident Details</legend>
+          <div class="form-row-2">
+            <div class="input-box">
+              <label for="crime_category">Crime Category</label>
+              <select id="crime_category" name="crime_category" required>
+                <option value="INVESTMENT_FRAUD">Investment Scam</option>
+                <option value="PHISHING_UPI">UPI Phishing / OTP</option>
+                <option value="TASK_FRAUD">Task / Job Scam</option>
+                <option value="EXTORTION">Extortion / Blackmail</option>
+                <option value="LOAN_SCAM">Instant Loan App</option>
+              </select>
+            </div>
+            <div class="input-box">
+              <label for="reported_amount">Loss Amount (&#8377;)</label>
+              <input type="number" id="reported_amount" name="reported_amount" value="85000" min="1000" step="500" required>
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Group 2: Mule Account & Rail -->
+        <fieldset class="form-fieldset">
+          <legend class="form-legend">Mule Account &amp; Financial Rail</legend>
+          <div class="form-row-2">
+            <div class="input-box">
+              <label for="payment_channel">Payment Rail</label>
+              <select id="payment_channel" name="payment_channel" required>
+                <option value="UPI">UPI (Immediate Settlement)</option>
+                <option value="IMPS">IMPS (Immediate Transfer)</option>
+                <option value="NEFT">NEFT (Batch Clearing)</option>
+              </select>
+            </div>
+            <div class="input-box">
+              <label for="mule_bank_code">Beneficiary Mule Bank</label>
+              <select id="mule_bank_code" name="mule_bank_code" required>
+                <option value="BANK_SBI_SYNTH">State Bank of India (Synth)</option>
+                <option value="BANK_HDFC_SYNTH">HDFC Bank (Synth)</option>
+                <option value="BANK_ICIC_SYNTH">ICICI Bank (Synth)</option>
+                <option value="BANK_PNB_SYNTH">Punjab National Bank (Synth)</option>
+                <option value="BANK_AXIS_SYNTH">Axis Bank (Synth)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row-2" style="margin-top: 6px;">
+            <div class="input-box">
+              <label for="mule_branch_zone">Mule Account Branch Zone</label>
+              <select id="mule_branch_zone" name="mule_branch_zone" required>
+                <option value="ZONE_WEST">Zone West (Market Corridor)</option>
+                <option value="ZONE_NORTH">Zone North (Transport Nexus)</option>
+                <option value="ZONE_CENTRAL">Zone Central (Commercial Core)</option>
+                <option value="ZONE_SOUTH">Zone South (Institutional Hub)</option>
+                <option value="ZONE_EAST">Zone East (Industrial Fringe)</option>
+              </select>
+            </div>
+            <div class="input-box">
+              <label for="mule_account_tier">Account Classification</label>
+              <select id="mule_account_tier" name="mule_account_tier" required>
+                <option value="NEW_DIGITAL">Newly Opened Digital Savings</option>
+                <option value="STANDARD">Standard Regular Account</option>
+                <option value="RURAL_REGIONAL">Regional Rural Bank Account</option>
+              </select>
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Group 3: Temporal Context -->
+        <fieldset class="form-fieldset">
+          <legend class="form-legend">Temporal Context</legend>
+          <div class="form-row-2">
+            <div class="input-box">
+              <label for="reporting_delay_mins">Reporting Delay (Mins)</label>
+              <input type="number" id="reporting_delay_mins" name="reporting_delay_mins" value="25" min="5" max="720" required>
+            </div>
+            <div class="input-box">
+              <label for="incident_hour">Incident Hour (0–23)</label>
+              <input type="number" id="incident_hour" name="incident_hour" value="15" min="0" max="23" required>
+            </div>
+          </div>
+          <div class="form-row-2" style="margin-top: 6px;">
+            <div class="input-box" style="grid-column: span 2;">
+              <label for="incident_day_of_week">Day of Incident</label>
+              <select id="incident_day_of_week" name="incident_day_of_week" required>
+                <option value="0">Monday</option>
+                <option value="1">Tuesday</option>
+                <option value="2">Wednesday</option>
+                <option value="3">Thursday</option>
+                <option value="4" selected>Friday</option>
+                <option value="5">Saturday</option>
+                <option value="6">Sunday</option>
+              </select>
+            </div>
+          </div>
+        </fieldset>
+
+        <button type="submit" id="btnPredict" class="btn-submit-forecast">
+          <span>Generate Predictive Forecast</span>
+        </button>
+      </form>
+
+      <!-- Forecast Output Result Card -->
+      <div id="forecastCard" class="forecast-result-card">
+        <div class="forecast-top-row">
+          <span style="font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+            Actionable Intelligence Forecast
+          </span>
+          <span id="predRiskBadge" class="risk-tag risk-critical">CRITICAL RISK</span>
+        </div>
+
+        <div class="target-atm-display">
+          <div>
+            <div style="font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">
+              Forecasted ATM Location
+            </div>
+            <span id="predAtmId" class="atm-code">--</span>
+            <span id="predZoneId" style="font-size: 0.78rem; color: var(--text-muted); margin-left: 6px;">--</span>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">
+              Confidence
+            </div>
+            <span id="predConfidence" class="atm-confidence">--%</span>
+          </div>
+        </div>
+
+        <div class="tactical-window-strip">
+          <span>&#9201; Estimated Intervention Window:</span>
+          <span id="predWindow" style="font-weight: 700; color: var(--accent-blue);">--</span>
+        </div>
+
+        <!-- Progressive Disclosure: Explainability Reason Codes -->
+        <details class="why-prediction-accordion" open>
+          <summary>Why this prediction? (Reason Codes)</summary>
+          <div id="predReasons" class="reasons-tags-flex">
+            <!-- Dynamically populated -->
+          </div>
+        </details>
+
+        <!-- Ranked Candidate ATM Locations Table -->
+        <div style="font-size: 0.72rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">
+          Ranked Candidate ATMs (Top 5)
+        </div>
+        <div class="candidate-table-wrap">
+          <table class="mini-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>ATM ID</th>
+                <th>Bank</th>
+                <th>Zone</th>
+                <th>Probability</th>
+                <th>Distribution</th>
+              </tr>
+            </thead>
+            <tbody id="candidateTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Right Column: Geospatial Tactical Map -->
+    <section class="workbench-card map-panel">
+      <div class="card-heading">
+        <span>Tactical ATM Network &amp; Geographic Risk Map</span>
+        <div class="map-controls-row">
+          <span style="font-size: 0.7rem; color: var(--text-muted);">Zone Filter:</span>
+          <button type="button" class="btn-zone-filter active" data-zone="ALL">All</button>
+          <button type="button" class="btn-zone-filter" data-zone="ZONE_CENTRAL">Central</button>
+          <button type="button" class="btn-zone-filter" data-zone="ZONE_NORTH">North</button>
+          <button type="button" class="btn-zone-filter" data-zone="ZONE_SOUTH">South</button>
+          <button type="button" class="btn-zone-filter" data-zone="ZONE_WEST">West</button>
+          <button type="button" class="btn-zone-filter" data-zone="ZONE_EAST">East</button>
+        </div>
+      </div>
+
+      <div id="map" class="leaflet-map-viewport"></div>
+
+      <div class="map-footer-legend">
+        <div class="legend-node">
+          <span class="circle-branch"></span>
+          <span>Branch-Attached ATM</span>
+        </div>
+        <div class="legend-node">
+          <span class="circle-kiosk"></span>
+          <span>Standalone Kiosk (High Vulnerability)</span>
+        </div>
+        <div class="legend-node">
+          <span class="circle-target"></span>
+          <span>Forecasted Target / Interception Perimeter</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 4. Lower Secondary Analytics Area (Tabs) -->
+  <section class="analytics-section">
+    <div class="tabs-header">
+      <button type="button" class="tab-btn active" data-tab="tab-analytics">Historical Analytics</button>
+      <button type="button" class="tab-btn" data-tab="tab-dispatch">Recent Dispatch Log</button>
+    </div>
+
+    <!-- Tab 1: Historical Analytics Charts -->
+    <div id="tab-analytics" class="tab-pane active">
+      <div class="charts-dual-grid">
+        <div class="chart-card-box">
+          <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">
+            Crime Category Distribution
+          </div>
+          <div style="height: 180px; position: relative;">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-card-box">
+          <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">
+            Payment Rail Incident Volume
+          </div>
+          <div style="height: 180px; position: relative;">
+            <canvas id="channelChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Recent Dispatch Log -->
+    <div id="tab-dispatch" class="tab-pane">
+      <div class="candidate-table-wrap">
+        <table class="mini-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Predicted Target</th>
+              <th>Jurisdiction Zone</th>
+              <th>Operational Risk</th>
+              <th>Patrol Status</th>
+            </tr>
+          </thead>
+          <tbody id="alertHistoryBody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Modal: Model Provenance & Verified Phase 2 Metrics -->
+  <div id="modelModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-title-row">
+        <h3 style="font-size: 1.05rem; font-weight: 700;">Model Provenance &amp; Evaluation Audit</h3>
+        <button id="closeModalBtn" class="btn-close-modal" type="button">&times;</button>
+      </div>
+      <div style="font-size: 0.82rem; line-height: 1.6; color: var(--text-main);">
+        <p><b>Model Architecture:</b> <span id="modalModelName">RandomForest + Sigmoid Calibrator (FrozenEstimator)</span></p>
+        <p><b>Evaluation Protocol:</b> Chronological Partition 3 (Untouched Future Period Only)</p>
+        <p><b>Test Sample Size:</b> <span id="modalSamples">659 complaints</span></p>
+
+        <div class="metrics-quad-grid">
+          <div class="quad-box">
+            <div class="quad-title">Top-1 Spatial Accuracy</div>
+            <div id="modalTop1" class="quad-val" style="color: var(--accent-blue);">10.17%</div>
+          </div>
+          <div class="quad-box">
+            <div class="quad-title">Top-3 Spatial Accuracy</div>
+            <div id="modalTop3" class="quad-val" style="color: var(--accent-cyan);">31.71%</div>
+          </div>
+          <div class="quad-box">
+            <div class="quad-title">Top-5 Spatial Accuracy</div>
+            <div id="modalTop5" class="quad-val" style="color: var(--risk-low);">41.88%</div>
+          </div>
+          <div class="quad-box">
+            <div class="quad-title">Zone-Level Accuracy</div>
+            <div id="modalZone" class="quad-val" style="color: #a855f7;">68.89%</div>
+          </div>
+        </div>
+
+        <p><b>Temporal Window Coverage:</b> <span id="modalTemporal">50.38% (Empirical IQR 25th–75th)</span></p>
+        <p><b>Calibrated Multi-Class Brier Score:</b> <span id="modalBrier">0.9726</span></p>
+        <p><b>Calibrated Log Loss:</b> <span id="modalLogLoss">3.5199</span></p>
+        
+        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 12px; background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          Note: Evaluated on Partition 3 with strict chronological ordering. Zero data leakage: preprocessors and models were fitted exclusively on Partition 1; calibration used Partition 2; Partition 3 was kept completely unseen. Random baseline for 47 classes is 2.13% (Top-1 demonstrates ~4.8x empirical lift).
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Footer -->
+  <footer class="app-footer-bar">
+    <div>
+      Cybercrime Cash Withdrawal Predictive Analytics Framework &bull; Academic Proof-of-Concept &bull; Synthetic / Non-PII Data Only
+    </div>
+    <div>
+      Privacy-by-Design &bull; FastAPI + Scikit-Learn
+    </div>
+  </footer>
+
+  <!-- App Script (Module) -->
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
