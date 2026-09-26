@@ -29,11 +29,10 @@ export const MapController = {
       maxZoom: 16,
     });
 
-    // Dark Matter tile layer for high-contrast dashboard appearance
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap',
-      subdomains: "abcd",
-      maxZoom: 19,
+    // Native dark canvas basemap (Esri World Dark Gray Base - key-free, no watermarks, no inverted road shields)
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+      attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+      maxZoom: 16,
     }).addTo(mapInstance);
 
     this.renderZones();
