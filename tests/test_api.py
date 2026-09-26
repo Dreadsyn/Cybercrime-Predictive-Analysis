@@ -24,6 +24,7 @@ sys.path.insert(0, str(BASE_DIR))
 from backend.app.main import (
     generate_playbook_endpoint,
     get_dashboard_stats,
+    get_emerging_clusters,
     get_model_information,
     get_zone_hotspots,
     health_check,
@@ -33,6 +34,8 @@ from backend.app.main import (
     predict_cashout_location,
     serve_dashboard,
 )
+from backend.app.cluster_engine import detect_emerging_clusters
+from backend.app.database import get_db_connection
 from backend.app.ml_engine import compute_intervention_priority
 from backend.app.playbook_engine import generate_investigator_playbook
 from backend.app.schemas import PlaybookRequest, PredictionRequest
@@ -332,4 +335,78 @@ def test_dashboard_serve_endpoint():
     res = serve_dashboard()
     assert res.status_code == 200
     assert "index.html" in str(res.path)
+
+
+def test_get_emerging_clusters_endpoint():
+    """Verifies that /api/analytics/clusters returns valid cluster intelligence."""
+    response = get_emerging_clusters(window_hours=24, min_events=2, source="all")
+    assert "total_clusters" in response
+    assert "window_hours" in response
+    assert response["window_hours"] == 24
+    assert "clusters" in response
+    assert isinstance(response["clusters"], list)
+    assert response["total_clusters"] >= 1
+    assert len(response["clusters"]) == response["total_clusters"]
+
+    first = response["clusters"][0]
+    assert first["cluster_id"].startswith("CLUSTER-")
+    assert first["zone"] in {"ZONE_CENTRAL", "ZONE_NORTH", "ZONE_SOUTH", "ZONE_EAST", "ZONE_WEST"}
+    assert first["complaint_case_count"] >= 2
+    assert first["event_count"] >= 2
+    assert len(first["involved_atm_ids"]) >= 1
+    assert 0 <= first["emergence_score"] <= 100
+    assert first["severity_level"] in {"CRITICAL", "HIGH", "ELEVATED"}
+    assert len(first["recommended_action"]) > 10
+    assert "time_window_start" in first
+    assert "time_window_end" in first
+
+
+def test_get_emerging_clusters_filters():
+    """Verifies cluster query filters: zone filter, time window, and data source."""
+    # Zone filter test
+    zone_res = get_emerging_clusters(window_hours=48, min_events=2, zone="ZONE_WEST", source="all")
+    assert isinstance(zone_res["clusters"], list)
+    for c in zone_res["clusters"]:
+        assert c["zone"] == "ZONE_WEST"
+
+    # Source filter tests
+    cashout_res = get_emerging_clusters(window_hours=24, min_events=2, source="cashouts")
+    assert isinstance(cashout_res["clusters"], list)
+    for c in cashout_res["clusters"]:
+        assert c["cluster_type"] == "CONFIRMED_CASHOUT_SURGE"
+
+    pred_res = get_emerging_clusters(window_hours=24, min_events=2, source="predictions")
+    assert isinstance(pred_res["clusters"], list)
+    for c in pred_res["clusters"]:
+        assert c["cluster_type"] == "PREDICTED_CONVERGENCE"
+
+
+def test_cluster_detection_deterministic_logic():
+    """Verifies that detect_emerging_clusters is 100% deterministic and reproducible."""
+    with get_db_connection() as conn:
+        run1 = detect_emerging_clusters(conn, window_hours=24, min_events=2, source="all")
+        run2 = detect_emerging_clusters(conn, window_hours=24, min_events=2, source="all")
+
+    assert run1["total_clusters"] == run2["total_clusters"]
+    assert len(run1["clusters"]) == len(run2["clusters"])
+    for c1, c2 in zip(run1["clusters"], run2["clusters"]):
+        assert c1["cluster_id"] == c2["cluster_id"]
+        assert c1["zone"] == c2["zone"]
+        assert c1["emergence_score"] == c2["emergence_score"]
+        assert c1["severity_level"] == c2["severity_level"]
+        assert c1["involved_atm_ids"] == c2["involved_atm_ids"]
+
+
+def test_cluster_detection_threshold_and_empty_handling():
+    """Verifies graceful handling of restrictive thresholds and empty result sets."""
+    # Impossibly high threshold
+    high_thresh = get_emerging_clusters(window_hours=1, min_events=50)
+    assert high_thresh["total_clusters"] == 0
+    assert high_thresh["clusters"] == []
+
+    # Non-existent zone
+    empty_zone = get_emerging_clusters(window_hours=24, min_events=2, zone="ZONE_NON_EXISTENT")
+    assert empty_zone["total_clusters"] == 0
+    assert empty_zone["clusters"] == []
+
 

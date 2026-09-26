@@ -176,3 +176,43 @@ class ModelInfoResponse(BaseModel):
     p3_eval_metrics: Dict[str, Any]
     partition_sizes: Dict[str, int]
     chronological_boundaries: Dict[str, str]
+
+
+# ==============================================================================
+# 5. EMERGING CASH-OUT CLUSTER SCHEMAS (FEATURE 1)
+# ==============================================================================
+class EmergingCluster(BaseModel):
+    cluster_id: str
+    cluster_type: str
+    zone: str
+    primary_atm_id: str
+    involved_atm_ids: List[str]
+    time_window_start: str
+    time_window_end: str
+    complaint_count: int
+    complaint_case_count: Optional[int] = None
+    cash_out_event_count: int
+    event_count: Optional[int] = None
+    prediction_count: int
+    total_amount_involved: float
+    severity_level: str
+    emergence_score: int
+    supporting_complaint_ids: List[str]
+    supporting_prediction_ids: List[str]
+    center_latitude: float
+    center_longitude: float
+    recommendation: str
+    recommended_action: Optional[str] = None
+
+
+class ClusterResponse(BaseModel):
+    total_clusters: int
+    total_clusters_detected: int
+    window_hours: int
+    rolling_window_hours: int
+    window_start: str
+    window_end: str
+    reference_timestamp: Optional[str] = None
+    active_zone_filter: Optional[str] = None
+    source_evaluated: str
+    clusters: List[EmergingCluster]

@@ -68,4 +68,17 @@ export const API = {
   async getModelInfo() {
     return await request("/model-info");
   },
+
+  // 8. Emerging Cash-Out Clusters (Feature 1)
+  async getClusters(params = {}) {
+    const q = new URLSearchParams();
+    if (params.window_hours) q.append("window_hours", params.window_hours);
+    if (params.min_events) q.append("min_events", params.min_events);
+    if (params.zone) q.append("zone", params.zone);
+    if (params.source) q.append("source", params.source);
+    if (params.reference_timestamp) q.append("reference_timestamp", params.reference_timestamp);
+    const qs = q.toString();
+    return await request(`/analytics/clusters${qs ? `?${qs}` : ""}`);
+  },
 };
+

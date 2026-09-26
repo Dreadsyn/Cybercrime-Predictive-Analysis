@@ -55,6 +55,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupZoneFilterListeners();
   setupFormListeners();
   setupModalListeners();
+  setupClusterListeners();
 
   // 3. Load Core Telemetry & Data
   await loadDashboardData();
@@ -91,6 +92,9 @@ async function loadDashboardData() {
 
     // Populate Recent Dispatch Log
     renderAlertHistory(predictions);
+
+    // Load Emerging Cash-Out Clusters
+    await loadClusters();
 
     // Cache model info for audit modal
     window.modelInfoData = modelInfo;
@@ -436,6 +440,87 @@ function renderAlertHistory(predictions) {
         <td><span style="font-size: 0.72rem; color: var(--risk-low); font-weight: 700; letter-spacing: 0.04em;">DISPATCH READY</span></td>
       </tr>
     `;
+    })
+    .join("");
+}
+
+/**
+ * Configure cluster analysis toolbar listeners (Feature 1).
+ */
+function setupClusterListeners() {
+  const winSelect = document.getElementById("clusterWindowSelect");
+  const srcSelect = document.getElementById("clusterSourceSelect");
+  const refreshBtn = document.getElementById("btnRefreshClusters");
+
+  if (winSelect) winSelect.addEventListener("change", () => loadClusters());
+  if (srcSelect) srcSelect.addEventListener("change", () => loadClusters());
+  if (refreshBtn) refreshBtn.addEventListener("click", () => loadClusters());
+}
+
+/**
+ * Fetch and refresh emerging cash-out clusters from backend API.
+ */
+async function loadClusters() {
+  const winSelect = document.getElementById("clusterWindowSelect");
+  const srcSelect = document.getElementById("clusterSourceSelect");
+  const windowHours = winSelect ? parseInt(winSelect.value, 10) : 24;
+  const source = srcSelect ? srcSelect.value : "all";
+
+  const summaryEl = document.getElementById("clusterStatusSummary");
+  if (summaryEl) summaryEl.innerText = `Analyzing rolling ${windowHours}h window for emerging concentrations...`;
+
+  try {
+    const data = await API.getClusters({ window_hours: windowHours, min_events: 2, source: source });
+    renderClusters(data);
+  } catch (err) {
+    if (summaryEl) summaryEl.innerText = `Cluster detection error: ${err.message}`;
+  }
+}
+
+/**
+ * Render emerging cash-out clusters to table and update badge count.
+ */
+function renderClusters(data) {
+  const badge = document.getElementById("clusterBadgeCount");
+  const summaryEl = document.getElementById("clusterStatusSummary");
+  const tbody = document.getElementById("clusterTableBody");
+  if (!tbody) return;
+
+  const total = data.total_clusters_detected || (data.clusters ? data.clusters.length : 0);
+  if (badge) badge.innerText = total;
+
+  if (summaryEl) {
+    summaryEl.innerText = `Detected ${total} emerging cluster${total === 1 ? "" : "s"} across rolling ${data.rolling_window_hours || data.window_hours || 24}h temporal window (${data.window_start || ""} to ${data.window_end || ""}).`;
+  }
+
+  if (!data.clusters || data.clusters.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-dim); padding: 16px;">No emerging cash-out clusters detected in the selected time window.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.clusters
+    .map(c => {
+      const isAlert = c.cluster_type === "PREDICTED_CONVERGENCE";
+      const typeLabel = isAlert ? "Alert Convergence" : "Cash-Out Surge";
+      const typeClass = isAlert ? "cluster-type-alert" : "cluster-type-cashout";
+      const sevClass = `priority-${(c.severity_level || "low").toLowerCase()}`;
+      const atmsList = c.involved_atm_ids && c.involved_atm_ids.length > 0 ? c.involved_atm_ids.join(", ") : c.primary_atm_id;
+
+      return `
+      <tr>
+        <td><span class="cluster-id-badge">${c.cluster_id}</span></td>
+        <td><span class="cluster-type-tag ${typeClass}">${typeLabel}</span></td>
+        <td><span class="priority-tag ${sevClass}">${c.severity_level}</span></td>
+        <td><span class="cluster-score-pill">${c.emergence_score}/100</span></td>
+        <td><b>${c.primary_atm_id}</b> <small style="color: var(--text-muted);">(${c.zone.replace("ZONE_", "")})</small></td>
+        <td><small style="color: #cbd5e1; font-family: monospace;">${atmsList}</small></td>
+        <td>
+          <b>${c.complaint_count || c.complaint_case_count}</b> <small style="color: var(--text-muted);">(CO:${c.cash_out_event_count}, Pred:${c.prediction_count})</small>
+        </td>
+        <td><small style="color: var(--text-muted); font-family: monospace;">${(c.time_window_start || "").substring(5, 16)} to ${(c.time_window_end || "").substring(11, 16)}</small></td>
+        <td style="max-width: 260px;"><small style="color: #cbd5e1; line-height: 1.3; display: block;">${c.recommendation || c.recommended_action}</small></td>
+      </tr>
+      `;
     })
     .join("");
 }

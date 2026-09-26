@@ -32,11 +32,13 @@ STATIC_DIR = FRONTEND_DIR / "static"
 sys.path.insert(0, str(BASE_DIR))
 
 # Database and Schemas
+from backend.app.cluster_engine import detect_emerging_clusters
 from backend.app.database import get_db_connection
 from backend.app.ml_engine import ml_engine
 from backend.app.playbook_engine import generate_investigator_playbook
 from backend.app.schemas import (
     ATMLocationResponse,
+    ClusterResponse,
     ComplaintResponse,
     HotspotZone,
     InvestigatorPlaybook,
@@ -217,6 +219,45 @@ def get_zone_hotspots():
             "center_longitude": lon,
         })
     return results
+
+
+@app.get("/api/analytics/clusters", response_model=ClusterResponse, tags=["Analytics"])
+def get_emerging_clusters(
+    window_hours: int = Query(24, ge=1, le=168, description="Rolling time window length in hours"),
+    min_events: int = Query(2, ge=2, le=50, description="Minimum events to form an emerging cluster"),
+    zone: Optional[str] = Query(None, description="Optional zone filter, e.g. ZONE_WEST"),
+    source: str = Query("all", description="Source data: 'all', 'predictions', or 'cashouts'"),
+    reference_timestamp: Optional[str] = Query(None, description="Optional custom reference end timestamp (YYYY-MM-DD HH:MM:SS)"),
+):
+    """
+    Detects emerging cash-out clusters across a configurable rolling temporal window.
+    Identifies localized concentration around ATM/ATM-zone locations.
+    """
+    try:
+        actual_window = window_hours if isinstance(window_hours, int) else getattr(window_hours, "default", 24)
+        actual_min = min_events if isinstance(min_events, int) else getattr(min_events, "default", 2)
+        actual_zone = zone if isinstance(zone, str) else getattr(zone, "default", None)
+        if not isinstance(actual_zone, str):
+            actual_zone = None
+        actual_source = source if isinstance(source, str) else getattr(source, "default", "all")
+        if not isinstance(actual_source, str):
+            actual_source = "all"
+        actual_ref = reference_timestamp if isinstance(reference_timestamp, str) else getattr(reference_timestamp, "default", None)
+        if not isinstance(actual_ref, str):
+            actual_ref = None
+
+        with get_db_connection() as conn:
+            result = detect_emerging_clusters(
+                db_conn=conn,
+                window_hours=actual_window,
+                min_events=actual_min,
+                zone=actual_zone,
+                source=actual_source,
+                reference_timestamp=actual_ref,
+            )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cluster detection failed: {str(e)}")
 
 
 @app.post("/api/predict", response_model=PredictionResponse, status_code=status.HTTP_200_OK, tags=["Predictive Analytics"])
