@@ -22,6 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from backend.app.main import (
+    generate_playbook_endpoint,
     get_dashboard_stats,
     get_model_information,
     get_zone_hotspots,
@@ -33,7 +34,8 @@ from backend.app.main import (
     serve_dashboard,
 )
 from backend.app.ml_engine import compute_intervention_priority
-from backend.app.schemas import PredictionRequest
+from backend.app.playbook_engine import generate_investigator_playbook
+from backend.app.schemas import PlaybookRequest, PredictionRequest
 
 
 def test_health_endpoint():
@@ -122,6 +124,104 @@ def test_predict_endpoint_valid():
     assert pred["priority_level"] in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
     assert isinstance(pred["priority_reasons"], list)
     assert 2 <= len(pred["priority_reasons"]) <= 4
+
+    # Milestone 1 Feature 7: Investigator Action Playbook
+    assert "playbook" in pred
+    assert pred["playbook"] is not None
+    playbook = pred["playbook"]
+    assert "disposition" in playbook
+    assert "summary" in playbook
+    assert playbook["total_actions"] >= 4
+    assert len(playbook["actions"]) >= 4
+    assert "dispatch_brief" in playbook
+    assert pred["predicted_atm_id"] in playbook["dispatch_brief"]
+
+    # Verify structured action contract
+    first_action = playbook["actions"][0]
+    assert "step" in first_action
+    assert "title" in first_action
+    assert "action_type" in first_action
+    assert "urgency" in first_action
+    assert "target" in first_action
+    assert "description" in first_action
+    assert "rationale" in first_action
+
+
+def test_playbook_generation_scenarios():
+    """Verifies that generate_investigator_playbook produces contextual, prioritized SOP steps."""
+    # Critical scenario
+    crit_playbook = generate_investigator_playbook({
+        "predicted_atm_id": "ATM-WE-047",
+        "predicted_zone_id": "ZONE_WEST",
+        "priority_score": 88,
+        "priority_level": "CRITICAL",
+        "confidence_score": 0.25,
+        "predicted_window_start": "2026-09-26 15:30:00",
+        "predicted_window_end": "2026-09-26 16:15:00",
+        "explanation_codes": ["HIGH_VELOCITY_CHANNEL", "HOTSPOT_CORRIDOR", "ON_US_BANK_MATCH"],
+        "top_candidates": [
+            {"rank": 1, "atm_id": "ATM-WE-047", "zone_id": "ZONE_WEST", "probability": 0.25},
+            {"rank": 2, "atm_id": "ATM-WE-048", "zone_id": "ZONE_WEST", "probability": 0.12},
+        ],
+        "reported_amount": 125000.0,
+        "payment_channel": "UPI",
+        "mule_bank_code": "BANK_SBI_SYNTH",
+    })
+
+    assert crit_playbook["disposition"] == "RAPID_TACTICAL_INTERCEPTION"
+    assert crit_playbook["total_actions"] >= 5
+    assert crit_playbook["actions"][0]["urgency"] == "IMMEDIATE"
+    assert crit_playbook["actions"][0]["action_type"] == "PATROL_DISPATCH"
+    assert "ATM-WE-047" in crit_playbook["actions"][0]["target"]
+
+    # Low routine scenario
+    low_playbook = generate_investigator_playbook({
+        "predicted_atm_id": "ATM-EA-038",
+        "predicted_zone_id": "ZONE_EAST",
+        "priority_score": 25,
+        "priority_level": "LOW",
+        "confidence_score": 0.04,
+        "predicted_window_start": "2026-09-26 10:00:00",
+        "predicted_window_end": "2026-09-26 14:00:00",
+        "explanation_codes": ["ZONE_AFFINITY_MATCH"],
+        "top_candidates": [
+            {"rank": 1, "atm_id": "ATM-EA-038", "zone_id": "ZONE_EAST", "probability": 0.04},
+        ],
+        "reported_amount": 9000.0,
+        "payment_channel": "NEFT",
+        "mule_bank_code": "BANK_PNB_SYNTH",
+    })
+
+    assert low_playbook["disposition"] == "ROUTINE_AUDIT_LOGGING"
+    assert low_playbook["actions"][0]["urgency"] == "STANDARD"
+    assert low_playbook["actions"][0]["action_type"] == "ROUTINE_LOG"
+
+
+def test_playbook_endpoint():
+    """Verifies that POST /api/playbook endpoint serves structured playbook schema."""
+    req = PlaybookRequest(
+        predicted_atm_id="ATM-NO-013",
+        predicted_zone_id="ZONE_NORTH",
+        risk_level="HIGH",
+        priority_level="HIGH",
+        priority_score=75,
+        confidence_score=0.20,
+        predicted_window_start="2026-09-26 12:00:00",
+        predicted_window_end="2026-09-26 12:45:00",
+        explanation_codes=["HIGH_VELOCITY_CHANNEL", "LOW_SURVEILLANCE_RISK"],
+        top_candidates=[
+            {"rank": 1, "atm_id": "ATM-NO-013", "zone_id": "ZONE_NORTH", "probability": 0.20},
+            {"rank": 2, "atm_id": "ATM-NO-014", "zone_id": "ZONE_NORTH", "probability": 0.10},
+        ],
+        reported_amount=60000.0,
+        payment_channel="IMPS",
+        mule_bank_code="BANK_HDFC_SYNTH",
+    )
+    playbook = generate_playbook_endpoint(req)
+    assert playbook["disposition"] == "PRIORITY_PATROL_MONITORING"
+    assert playbook["total_actions"] >= 4
+    assert len(playbook["actions"]) == playbook["total_actions"]
+    assert "ATM-NO-013" in playbook["dispatch_brief"]
 
 
 def test_intervention_priority_scoring_deterministic_logic():

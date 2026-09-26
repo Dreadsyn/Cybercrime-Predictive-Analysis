@@ -56,6 +56,8 @@ def ensure_db_schema():
                 cur.execute("ALTER TABLE predictions ADD COLUMN priority_level VARCHAR(20) DEFAULT 'LOW';")
             if "priority_reasons_json" not in existing_cols:
                 cur.execute("ALTER TABLE predictions ADD COLUMN priority_reasons_json TEXT DEFAULT '[]';")
+            if "playbook_json" not in existing_cols:
+                cur.execute("ALTER TABLE predictions ADD COLUMN playbook_json TEXT DEFAULT '{}';")
 
 
 def init_db():

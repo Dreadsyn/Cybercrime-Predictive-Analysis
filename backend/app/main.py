@@ -34,11 +34,14 @@ sys.path.insert(0, str(BASE_DIR))
 # Database and Schemas
 from backend.app.database import get_db_connection
 from backend.app.ml_engine import ml_engine
+from backend.app.playbook_engine import generate_investigator_playbook
 from backend.app.schemas import (
     ATMLocationResponse,
     ComplaintResponse,
     HotspotZone,
+    InvestigatorPlaybook,
     ModelInfoResponse,
+    PlaybookRequest,
     PredictionRequest,
     PredictionResponse,
     StatsResponse,
@@ -256,8 +259,28 @@ def list_predictions(limit: int = Query(25, ge=1, le=100)):
             d["priority_reasons"] = []
         d["priority_score"] = d.get("priority_score", 0) or 0
         d["priority_level"] = d.get("priority_level", "LOW") or "LOW"
+        if "playbook_json" in d and d["playbook_json"]:
+            try:
+                d["playbook"] = json.loads(d["playbook_json"])
+            except Exception:
+                d["playbook"] = None
+        else:
+            d["playbook"] = None
         results.append(d)
     return results
+
+
+@app.post("/api/playbook", response_model=InvestigatorPlaybook, status_code=status.HTTP_200_OK, tags=["Predictive Analytics"])
+def generate_playbook_endpoint(request: PlaybookRequest):
+    """
+    Generates a structured, prioritized investigator action playbook
+    tailored to the specific prediction, priority triage score, ATM, and risk codes.
+    """
+    try:
+        playbook = generate_investigator_playbook(request.model_dump())
+        return playbook
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Playbook generation failed: {str(e)}")
 
 
 @app.get("/api/model-info", response_model=ModelInfoResponse, tags=["Predictive Analytics"])

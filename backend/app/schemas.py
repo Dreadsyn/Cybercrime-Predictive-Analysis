@@ -76,6 +76,25 @@ class PredictionRequest(BaseModel):
     complaint_id: Optional[str] = Field(None, json_schema_extra={"example": "CMP-LIVE-001"})
 
 
+class PlaybookAction(BaseModel):
+    step: int
+    title: str
+    action_type: str
+    urgency: str
+    target: str
+    description: str
+    rationale: str
+
+
+class InvestigatorPlaybook(BaseModel):
+    disposition: str
+    summary: str
+    total_actions: int
+    estimated_lead_time_window: str
+    dispatch_brief: str
+    actions: List[PlaybookAction]
+
+
 class PredictionResponse(BaseModel):
     prediction_id: str
     complaint_id: str
@@ -92,6 +111,24 @@ class PredictionResponse(BaseModel):
     priority_score: int = Field(..., ge=0, le=100, description="Deterministic 0-100 intervention priority score")
     priority_level: str = Field(..., description="Operational triage level: LOW, MEDIUM, HIGH, CRITICAL")
     priority_reasons: List[str] = Field(default_factory=list, description="2-4 concise reasons explaining the score")
+    playbook: Optional[InvestigatorPlaybook] = None
+
+
+class PlaybookRequest(BaseModel):
+    prediction_id: Optional[str] = None
+    predicted_atm_id: str
+    predicted_zone_id: str
+    risk_level: str = "MODERATE"
+    priority_level: str = "MEDIUM"
+    priority_score: int = 50
+    confidence_score: float = 0.10
+    predicted_window_start: Optional[str] = ""
+    predicted_window_end: Optional[str] = ""
+    explanation_codes: List[str] = Field(default_factory=list)
+    top_candidates: List[Dict[str, Any]] = Field(default_factory=list)
+    reported_amount: Optional[float] = None
+    payment_channel: Optional[str] = "UPI"
+    mule_bank_code: Optional[str] = None
 
 
 # ==============================================================================

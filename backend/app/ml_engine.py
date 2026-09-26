@@ -360,7 +360,24 @@ class MLEngine:
             explanation_codes=explanation_codes,
         )
 
-        # 8. Persistence to predictions table
+        # 8. Investigator Action Playbook Generation (Milestone 1, Feature 7)
+        from backend.app.playbook_engine import generate_investigator_playbook
+        playbook = generate_investigator_playbook({
+            "predicted_atm_id": top1_atm_id,
+            "predicted_zone_id": predicted_zone_id,
+            "priority_score": priority_info["priority_score"],
+            "priority_level": priority_info["priority_level"],
+            "confidence_score": confidence_score,
+            "predicted_window_start": predicted_window_start,
+            "predicted_window_end": predicted_window_end,
+            "explanation_codes": explanation_codes,
+            "top_candidates": top_candidates,
+            "reported_amount": rep_amt,
+            "payment_channel": payload.get("payment_channel", "UPI"),
+            "mule_bank_code": payload.get("mule_bank_code", ""),
+        })
+
+        # 9. Persistence to predictions table
         prediction_id = f"PRED-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
         cur = db_conn.cursor()
         cur.execute(
@@ -369,8 +386,9 @@ class MLEngine:
                 prediction_id, complaint_id, prediction_timestamp, predicted_atm_id,
                 predicted_zone_id, confidence_score, top_candidates_json,
                 predicted_window_start, predicted_window_end, risk_level,
-                explanation_codes_json, action_status, priority_score, priority_level, priority_reasons_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                explanation_codes_json, action_status, priority_score, priority_level,
+                priority_reasons_json, playbook_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 prediction_id,
@@ -388,6 +406,7 @@ class MLEngine:
                 priority_info["priority_score"],
                 priority_info["priority_level"],
                 json.dumps(priority_info["priority_reasons"]),
+                json.dumps(playbook),
             ),
         )
 
@@ -407,6 +426,7 @@ class MLEngine:
             "priority_score": priority_info["priority_score"],
             "priority_level": priority_info["priority_level"],
             "priority_reasons": priority_info["priority_reasons"],
+            "playbook": playbook,
         }
 
 

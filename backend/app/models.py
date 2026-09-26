@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     priority_score INTEGER DEFAULT 0,
     priority_level VARCHAR(20) DEFAULT 'LOW',
     priority_reasons_json TEXT DEFAULT '[]',
+    playbook_json TEXT DEFAULT '{}',
     FOREIGN KEY (predicted_atm_id) REFERENCES atm_locations (atm_id)
 );
 """

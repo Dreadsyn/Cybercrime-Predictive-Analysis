@@ -310,6 +310,70 @@ function renderPredictionResult(result) {
     windowEl.innerText = `${startTime} – ${endTime} hrs`;
   }
 
+  // Milestone 1 Feature 7: Tactical Investigator Action Playbook
+  const playbookCard = document.getElementById("playbookCard");
+  const playbookBadge = document.getElementById("playbookDispositionBadge");
+  const playbookSummary = document.getElementById("playbookSummary");
+  const playbookList = document.getElementById("playbookActionsList");
+  const copyBtn = document.getElementById("btnCopyDispatch");
+
+  if (result.playbook) {
+    if (playbookCard) playbookCard.style.display = "block";
+    if (playbookBadge) playbookBadge.innerText = (result.playbook.disposition || "TACTICAL SOP").replace(/_/g, " ");
+    if (playbookSummary) playbookSummary.innerText = result.playbook.summary || "";
+
+    if (playbookList && Array.isArray(result.playbook.actions)) {
+      playbookList.innerHTML = result.playbook.actions
+        .map(action => {
+          const urgencyClass = (action.urgency || "standard").toLowerCase();
+          return `
+            <div class="playbook-action-card" id="action-step-${action.step}">
+              <div class="playbook-card-header">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span class="playbook-step-badge urgency-${urgencyClass}">Step ${action.step} · ${action.urgency}</span>
+                  <span class="playbook-action-title">${escapeHtml(action.title)}</span>
+                </div>
+                <span class="playbook-action-target">${escapeHtml(action.target)}</span>
+              </div>
+              <div class="playbook-action-desc">${escapeHtml(action.description)}</div>
+              <div class="playbook-action-rationale">&#8627; Rationale: ${escapeHtml(action.rationale)}</div>
+              <div class="playbook-action-footer">
+                <label class="playbook-checkbox-label">
+                  <input type="checkbox" onchange="this.closest('.playbook-action-card').classList.toggle('completed', this.checked)">
+                  <span>Mark Executed</span>
+                </label>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    if (copyBtn) {
+      copyBtn.onclick = async () => {
+        const textToCopy = result.playbook.dispatch_brief || result.playbook.summary || "";
+        try {
+          await navigator.clipboard.writeText(textToCopy);
+          const icon = document.getElementById("copyBriefIcon");
+          const text = document.getElementById("copyBriefText");
+          if (icon) icon.innerText = "✓";
+          if (text) text.innerText = "Copied to Clipboard!";
+          copyBtn.classList.add("copied");
+          showToast("Tactical Dispatch Brief copied to clipboard!", "success");
+          setTimeout(() => {
+            if (icon) icon.innerHTML = "&#128203;";
+            if (text) text.innerText = "Copy Dispatch Brief";
+            copyBtn.classList.remove("copied");
+          }, 2500);
+        } catch (e) {
+          showToast("Failed to copy brief: " + e.message, "error");
+        }
+      };
+    }
+  } else if (playbookCard) {
+    playbookCard.style.display = "none";
+  }
+
   // Explainability Reason Codes (Pills inside accordion)
   const reasonsContainer = document.getElementById("predReasons");
   if (reasonsContainer && result.explanation_codes) {
