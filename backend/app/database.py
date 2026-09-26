@@ -41,12 +41,30 @@ def get_db_connection():
         conn.close()
 
 
+def ensure_db_schema():
+    """Ensures newly added columns exist in predictions table for backwards compatibility."""
+    if not DB_PATH.exists():
+        return
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(predictions);")
+        existing_cols = {row["name"] for row in cur.fetchall()}
+        if existing_cols:
+            if "priority_score" not in existing_cols:
+                cur.execute("ALTER TABLE predictions ADD COLUMN priority_score INTEGER DEFAULT 0;")
+            if "priority_level" not in existing_cols:
+                cur.execute("ALTER TABLE predictions ADD COLUMN priority_level VARCHAR(20) DEFAULT 'LOW';")
+            if "priority_reasons_json" not in existing_cols:
+                cur.execute("ALTER TABLE predictions ADD COLUMN priority_reasons_json TEXT DEFAULT '[]';")
+
+
 def init_db():
     """Creates the SQLite database tables if they do not already exist."""
     print(f"Initializing database at: {DB_PATH}")
     with get_db_connection() as conn:
         for ddl in ALL_TABLE_DDL:
             conn.execute(ddl)
+    ensure_db_schema()
     print("  [OK] Table schemas verified.")
 
 

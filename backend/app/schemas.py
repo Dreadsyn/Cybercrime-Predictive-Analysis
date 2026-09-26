@@ -89,6 +89,9 @@ class PredictionResponse(BaseModel):
     risk_level: str
     explanation_codes: List[str]
     action_status: str
+    priority_score: int = Field(..., ge=0, le=100, description="Deterministic 0-100 intervention priority score")
+    priority_level: str = Field(..., description="Operational triage level: LOW, MEDIUM, HIGH, CRITICAL")
+    priority_reasons: List[str] = Field(default_factory=list, description="2-4 concise reasons explaining the score")
 
 
 # ==============================================================================

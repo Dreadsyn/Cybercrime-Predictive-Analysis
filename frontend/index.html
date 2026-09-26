@@ -204,6 +204,26 @@
           <span id="predRiskBadge" class="risk-tag risk-critical">CRITICAL RISK</span>
         </div>
 
+        <!-- Operational Intervention Priority (Milestone 1, Feature 6) -->
+        <div class="priority-score-card">
+          <div class="priority-score-header">
+            <div class="priority-score-meta">
+              <span class="priority-label">Intervention Priority</span>
+              <span id="predPriorityBadge" class="priority-tag priority-critical">CRITICAL</span>
+            </div>
+            <div class="priority-score-value-box">
+              <span id="predPriorityScore" class="priority-num">--</span>
+              <span class="priority-denom">/100</span>
+            </div>
+          </div>
+          <div class="priority-progress-bar">
+            <div id="predPriorityProgress" class="priority-progress-fill" style="width: 0%;"></div>
+          </div>
+          <div id="predPriorityReasons" class="priority-reasons-list">
+            <!-- Dynamically populated with 2-4 short reasons -->
+          </div>
+        </div>
+
         <div class="target-atm-display">
           <div>
             <div style="font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">

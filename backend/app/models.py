@@ -68,6 +68,9 @@ CREATE TABLE IF NOT EXISTS predictions (
     risk_level VARCHAR(20) NOT NULL,
     explanation_codes_json TEXT NOT NULL,
     action_status VARCHAR(30) NOT NULL DEFAULT 'NEW_ALERT',
+    priority_score INTEGER DEFAULT 0,
+    priority_level VARCHAR(20) DEFAULT 'LOW',
+    priority_reasons_json TEXT DEFAULT '[]',
     FOREIGN KEY (predicted_atm_id) REFERENCES atm_locations (atm_id)
 );
 """

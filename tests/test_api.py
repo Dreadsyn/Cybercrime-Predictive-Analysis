@@ -32,6 +32,7 @@ from backend.app.main import (
     predict_cashout_location,
     serve_dashboard,
 )
+from backend.app.ml_engine import compute_intervention_priority
 from backend.app.schemas import PredictionRequest
 
 
@@ -115,6 +116,75 @@ def test_predict_endpoint_valid():
     cand_probs = [c["probability"] for c in pred["top_candidates"]]
     assert cand_probs == sorted(cand_probs, reverse=True)
 
+    # Milestone 1 Feature 6: Intervention Priority Scoring
+    assert isinstance(pred["priority_score"], int)
+    assert 0 <= pred["priority_score"] <= 100
+    assert pred["priority_level"] in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+    assert isinstance(pred["priority_reasons"], list)
+    assert 2 <= len(pred["priority_reasons"]) <= 4
+
+
+def test_intervention_priority_scoring_deterministic_logic():
+    """Verifies that compute_intervention_priority is deterministic, explainable, and multi-factor."""
+    # Critical intervention case: high amount, immediate reporting, instant rail, high confidence
+    crit = compute_intervention_priority(
+        confidence_score=0.26,
+        reporting_delay_mins=20.0,
+        reported_amount=120000.0,
+        payment_channel="UPI",
+        explanation_codes=["HIGH_VELOCITY_CHANNEL", "HOTSPOT_CORRIDOR", "ON_US_BANK_MATCH"],
+    )
+    assert crit["priority_score"] >= 80
+    assert crit["priority_level"] == "CRITICAL"
+    assert 2 <= len(crit["priority_reasons"]) <= 4
+
+    # Low intervention case: small amount, long delay, slow rail, low confidence
+    low = compute_intervention_priority(
+        confidence_score=0.04,
+        reporting_delay_mins=300.0,
+        reported_amount=8000.0,
+        payment_channel="NEFT",
+        explanation_codes=["ZONE_AFFINITY_MATCH"],
+    )
+    assert low["priority_score"] < 40
+    assert low["priority_level"] == "LOW"
+    assert 2 <= len(low["priority_reasons"]) <= 4
+
+    # Determinism: exact same inputs produce exact same score and reasons
+    crit_repeat = compute_intervention_priority(
+        confidence_score=0.26,
+        reporting_delay_mins=20.0,
+        reported_amount=120000.0,
+        payment_channel="UPI",
+        explanation_codes=["HIGH_VELOCITY_CHANNEL", "HOTSPOT_CORRIDOR", "ON_US_BANK_MATCH"],
+    )
+    assert crit == crit_repeat
+
+
+def test_intervention_priority_boundaries():
+    """Verifies that the score stays strictly bounded in [0, 100] across extreme values."""
+    # Max bound test
+    max_case = compute_intervention_priority(
+        confidence_score=1.0,
+        reporting_delay_mins=0.0,
+        reported_amount=1000000.0,
+        payment_channel="UPI",
+        explanation_codes=["HOTSPOT_CORRIDOR", "ON_US_BANK_MATCH", "GEOGRAPHIC_PROXIMITY", "LOW_SURVEILLANCE_RISK"],
+    )
+    assert 0 <= max_case["priority_score"] <= 100
+
+    # Min bound test
+    min_case = compute_intervention_priority(
+        confidence_score=0.0,
+        reporting_delay_mins=9999.0,
+        reported_amount=1.0,
+        payment_channel="OTHER",
+        explanation_codes=[],
+    )
+    assert 0 <= min_case["priority_score"] <= 100
+    assert min_case["priority_level"] == "LOW"
+    assert len(min_case["priority_reasons"]) >= 2
+
 
 def test_predict_endpoint_validation_error():
     """Verifies Pydantic rejects invalid or negative inputs."""
@@ -139,6 +209,8 @@ def test_predictions_audit_log():
     assert "prediction_id" in preds[0]
     assert "top_candidates" in preds[0]
     assert isinstance(preds[0]["top_candidates"], list)
+    assert "priority_score" in preds[0]
+    assert "priority_level" in preds[0]
 
 
 def test_model_info_matches_phase2():

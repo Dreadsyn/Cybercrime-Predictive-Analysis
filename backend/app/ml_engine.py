@@ -43,6 +43,128 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return R * c
 
 
+def compute_intervention_priority(
+    confidence_score: float,
+    reporting_delay_mins: float,
+    reported_amount: float,
+    payment_channel: str,
+    explanation_codes: list,
+) -> dict:
+    """
+    Computes a transparent, deterministic 0–100 operational intervention priority score
+    and 2–4 concise explanatory reasons using existing prediction signals.
+
+    Factor Breakdown (Max 100):
+    1. Calibrated Spatial Confidence (Max 35 pts)
+    2. Temporal & Channel Urgency (Max 30 pts)
+    3. Spatial & Target Vulnerability (Max 20 pts)
+    4. Financial Exposure (Max 15 pts)
+    """
+    reasons = []
+
+    # 1. Calibrated Spatial Confidence (Max 35 pts)
+    if confidence_score >= 0.25:
+        conf_pts = 35
+        reasons.append(f"High top-1 spatial concentration ({round(confidence_score * 100, 1)}% probability vs 2% uniform baseline)")
+    elif confidence_score >= 0.18:
+        conf_pts = 28
+        reasons.append(f"Elevated top-1 spatial confidence ({round(confidence_score * 100, 1)}% probability)")
+    elif confidence_score >= 0.12:
+        conf_pts = 20
+        reasons.append(f"Moderate spatial confidence ({round(confidence_score * 100, 1)}% probability)")
+    elif confidence_score >= 0.07:
+        conf_pts = 12
+    else:
+        conf_pts = 5
+
+    # 2. Temporal & Channel Urgency (Max 30 pts)
+    if reporting_delay_mins <= 30.0:
+        delay_pts = 20
+        delay_text = f"Rapid reporting ({int(reporting_delay_mins)}m delay) offers immediate interception lead-time"
+    elif reporting_delay_mins <= 60.0:
+        delay_pts = 15
+        delay_text = f"Actionable reporting window ({int(reporting_delay_mins)}m delay)"
+    elif reporting_delay_mins <= 120.0:
+        delay_pts = 10
+        delay_text = f"Standard reporting delay ({int(reporting_delay_mins)}m delay)"
+    else:
+        delay_pts = 3
+        delay_text = f"Extended reporting delay ({int(reporting_delay_mins)}m delay) reduces immediate interception window"
+
+    if payment_channel in ["UPI", "IMPS"] or "HIGH_VELOCITY_CHANNEL" in explanation_codes:
+        chan_pts = 10
+        chan_text = f"Instant settlement rail ({payment_channel}) implies fast cash-out urgency"
+    else:
+        chan_pts = 3
+        chan_text = f"Batch clearing rail ({payment_channel}) offers extended window"
+
+    urgency_pts = min(30, delay_pts + chan_pts)
+    if delay_pts >= 15:
+        reasons.append(delay_text)
+    elif chan_pts >= 10:
+        reasons.append(chan_text)
+    else:
+        reasons.append(delay_text)
+
+    # 3. Spatial & Target Vulnerability (Max 20 pts)
+    spatial_pts = 0
+    spatial_reason = None
+    if "HOTSPOT_CORRIDOR" in explanation_codes:
+        spatial_pts += 8
+        spatial_reason = "Target ATM is in an active historical cash-out hotspot corridor"
+    if "ON_US_BANK_MATCH" in explanation_codes:
+        spatial_pts += 6
+        if not spatial_reason:
+            spatial_reason = "Mule beneficiary bank matches target ATM network (on-us cash-out pattern)"
+    if "GEOGRAPHIC_PROXIMITY" in explanation_codes:
+        spatial_pts += 3
+        if not spatial_reason:
+            spatial_reason = "Target ATM located within 4km proximity of mule branch zone"
+    if "LOW_SURVEILLANCE_RISK" in explanation_codes or "HIGH_CAPACITY_TARGET" in explanation_codes:
+        spatial_pts += 3
+        if not spatial_reason:
+            spatial_reason = "Target ATM is a high-capacity or standalone kiosk location"
+
+    spatial_pts = min(20, spatial_pts)
+    if spatial_reason:
+        reasons.append(spatial_reason)
+    else:
+        reasons.append("Standard geographic zone routing without specific corridor clustering")
+
+    # 4. Financial Exposure (Max 15 pts)
+    if reported_amount >= 100000.0:
+        amt_pts = 15
+        reasons.append(f"Substantial financial exposure (INR {int(reported_amount):,}) warrants priority response")
+    elif reported_amount >= 50000.0:
+        amt_pts = 11
+        reasons.append(f"Significant reported amount (INR {int(reported_amount):,})")
+    elif reported_amount >= 25000.0:
+        amt_pts = 7
+    else:
+        amt_pts = 3
+
+    total_score = min(100, max(0, conf_pts + urgency_pts + spatial_pts + amt_pts))
+
+    if total_score >= 80:
+        priority_level = "CRITICAL"
+    elif total_score >= 60:
+        priority_level = "HIGH"
+    elif total_score >= 40:
+        priority_level = "MEDIUM"
+    else:
+        priority_level = "LOW"
+
+    selected_reasons = reasons[:4]
+    if len(selected_reasons) < 2:
+        selected_reasons.append(f"Overall operational priority rated {priority_level} based on multi-factor triage")
+
+    return {
+        "priority_score": int(total_score),
+        "priority_level": priority_level,
+        "priority_reasons": selected_reasons,
+    }
+
+
 class MLEngine:
     """Singleton service to load models and run inference."""
 
@@ -53,6 +175,11 @@ class MLEngine:
         self.metadata = None
         self.atm_cache = {}
         self.load_artifacts()
+        try:
+            from backend.app.database import ensure_db_schema
+            ensure_db_schema()
+        except Exception:
+            pass
 
     def load_artifacts(self):
         print(f"Loading Phase 2 ML artifacts from {MODELS_DIR} (Read-Only)...")
@@ -224,7 +351,16 @@ class MLEngine:
         else:
             risk_level = "LOW"
 
-        # 7. Persistence to predictions table
+        # 7. Intervention Priority Scoring (Deterministic 0-100 Operational Triage)
+        priority_info = compute_intervention_priority(
+            confidence_score=confidence_score,
+            reporting_delay_mins=delay,
+            reported_amount=rep_amt,
+            payment_channel=payload.get("payment_channel", ""),
+            explanation_codes=explanation_codes,
+        )
+
+        # 8. Persistence to predictions table
         prediction_id = f"PRED-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
         cur = db_conn.cursor()
         cur.execute(
@@ -233,8 +369,8 @@ class MLEngine:
                 prediction_id, complaint_id, prediction_timestamp, predicted_atm_id,
                 predicted_zone_id, confidence_score, top_candidates_json,
                 predicted_window_start, predicted_window_end, risk_level,
-                explanation_codes_json, action_status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                explanation_codes_json, action_status, priority_score, priority_level, priority_reasons_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 prediction_id,
@@ -249,6 +385,9 @@ class MLEngine:
                 risk_level,
                 json.dumps(explanation_codes),
                 "NEW_ALERT",
+                priority_info["priority_score"],
+                priority_info["priority_level"],
+                json.dumps(priority_info["priority_reasons"]),
             ),
         )
 
@@ -265,6 +404,9 @@ class MLEngine:
             "risk_level": risk_level,
             "explanation_codes": explanation_codes,
             "action_status": "NEW_ALERT",
+            "priority_score": priority_info["priority_score"],
+            "priority_level": priority_info["priority_level"],
+            "priority_reasons": priority_info["priority_reasons"],
         }
 
 

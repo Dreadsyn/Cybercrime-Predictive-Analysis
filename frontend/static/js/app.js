@@ -208,7 +208,7 @@ function setupFormListeners() {
         kpiAlerts.innerText = (currentAlerts + 1).toLocaleString();
       }
 
-      showToast(`Forecast Generated: Target ${result.predicted_atm_id} (${result.risk_level} Risk)`, "success");
+      showToast(`Forecast Generated: Target ${result.predicted_atm_id} (Priority: ${result.priority_level} · Score: ${result.priority_score}/100)`, "success");
     } catch (err) {
       showToast("Prediction request failed: " + err.message, "error");
     } finally {
@@ -216,6 +216,19 @@ function setupFormListeners() {
       submitBtn.innerHTML = `<span>Generate Predictive Forecast</span>`;
     }
   });
+}
+
+/**
+ * Escape HTML to prevent injection in dynamic elements.
+ */
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 /**
@@ -239,9 +252,55 @@ function renderPredictionResult(result) {
 
   // Risk Badge
   if (riskBadge) {
-    const level = result.risk_level.toLowerCase();
+    const level = (result.risk_level || "LOW").toLowerCase();
     riskBadge.className = `risk-tag risk-${level}`;
     riskBadge.innerText = `${result.risk_level} RISK`;
+  }
+
+  // Milestone 1 Feature 6: Operational Intervention Priority Score
+  const priorityScoreEl = document.getElementById("predPriorityScore");
+  const priorityBadge = document.getElementById("predPriorityBadge");
+  const priorityProgress = document.getElementById("predPriorityProgress");
+  const priorityReasonsEl = document.getElementById("predPriorityReasons");
+
+  const score = typeof result.priority_score === "number" ? result.priority_score : 0;
+  const pLevel = (result.priority_level || "LOW").toUpperCase();
+
+  if (priorityScoreEl) {
+    priorityScoreEl.innerText = score;
+  }
+
+  if (priorityBadge) {
+    priorityBadge.className = `priority-tag priority-${pLevel.toLowerCase()}`;
+    priorityBadge.innerText = `${pLevel}`;
+  }
+
+  if (priorityProgress) {
+    priorityProgress.style.width = `${Math.min(100, Math.max(0, score))}%`;
+    if (pLevel === "CRITICAL") {
+      priorityProgress.style.backgroundColor = "var(--risk-critical)";
+      if (priorityScoreEl) priorityScoreEl.style.color = "var(--risk-critical)";
+    } else if (pLevel === "HIGH") {
+      priorityProgress.style.backgroundColor = "var(--risk-high)";
+      if (priorityScoreEl) priorityScoreEl.style.color = "var(--risk-high)";
+    } else if (pLevel === "MEDIUM") {
+      priorityProgress.style.backgroundColor = "var(--risk-moderate)";
+      if (priorityScoreEl) priorityScoreEl.style.color = "var(--risk-moderate)";
+    } else {
+      priorityProgress.style.backgroundColor = "var(--risk-low)";
+      if (priorityScoreEl) priorityScoreEl.style.color = "var(--risk-low)";
+    }
+  }
+
+  if (priorityReasonsEl && Array.isArray(result.priority_reasons)) {
+    priorityReasonsEl.innerHTML = result.priority_reasons
+      .map(r => `
+        <div class="priority-reason-item">
+          <span class="priority-reason-bullet">&#8226;</span>
+          <span>${escapeHtml(r)}</span>
+        </div>
+      `)
+      .join("");
   }
 
   // Intervention Window (HH:MM – HH:MM)
@@ -297,15 +356,23 @@ function renderAlertHistory(predictions) {
   }
 
   container.innerHTML = predictions
-    .map(p => `
+    .map(p => {
+      const pLevel = (p.priority_level || p.risk_level || "LOW").toUpperCase();
+      const pScore = typeof p.priority_score === "number" ? p.priority_score : null;
+      return `
       <tr>
         <td><small style="color: var(--text-muted); font-family: monospace;">${p.prediction_timestamp.substring(11, 19)}</small></td>
         <td><b style="color: var(--accent-blue);">${p.predicted_atm_id}</b></td>
         <td>${p.predicted_zone_id.replace("ZONE_", "")}</td>
-        <td><span class="risk-tag risk-${p.risk_level.toLowerCase()}">${p.risk_level}</span></td>
+        <td>
+          <span class="priority-tag priority-${pLevel.toLowerCase()}">
+            ${pScore !== null ? `${pScore} · ` : ""}${pLevel}
+          </span>
+        </td>
         <td><span style="font-size: 0.72rem; color: var(--risk-low); font-weight: 700; letter-spacing: 0.04em;">DISPATCH READY</span></td>
       </tr>
-    `)
+    `;
+    })
     .join("");
 }
 

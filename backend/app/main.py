@@ -247,6 +247,15 @@ def list_predictions(limit: int = Query(25, ge=1, le=100)):
         d = dict(r)
         d["top_candidates"] = json.loads(d["top_candidates_json"])
         d["explanation_codes"] = json.loads(d["explanation_codes_json"])
+        if "priority_reasons_json" in d and d["priority_reasons_json"]:
+            try:
+                d["priority_reasons"] = json.loads(d["priority_reasons_json"])
+            except Exception:
+                d["priority_reasons"] = []
+        else:
+            d["priority_reasons"] = []
+        d["priority_score"] = d.get("priority_score", 0) or 0
+        d["priority_level"] = d.get("priority_level", "LOW") or "LOW"
         results.append(d)
     return results
 
