@@ -1,6 +1,7 @@
 /**
  * Chart.js Analytics Controller.
- * Renders crime category breakdowns and payment channel distributions.
+ * Renders crime category breakdowns and payment channel distributions
+ * optimized for the professional light operational theme.
  */
 
 let categoryChartInstance = null;
@@ -32,13 +33,13 @@ export const ChartController = {
           {
             data: counts,
             backgroundColor: [
-              "#38bdf8", // Sky blue
-              "#06b6d4", // Cyan
+              "#0d9488", // Restrained Teal
+              "#0891b2", // Cyan
               "#10b981", // Emerald
-              "#f59e0b", // Amber
-              "#ef4444", // Red
+              "#d97706", // Amber
+              "#dc2626", // Red
             ],
-            borderColor: "#111827",
+            borderColor: "#ffffff",
             borderWidth: 2,
           },
         ],
@@ -50,9 +51,10 @@ export const ChartController = {
           legend: {
             position: "bottom",
             labels: {
-              color: "#94a3b8",
+              color: "#475569",
               font: { size: 10, weight: 600 },
               boxWidth: 12,
+              padding: 8,
             },
           },
         },
@@ -81,7 +83,7 @@ export const ChartController = {
           {
             label: "Incident Volume",
             data: counts,
-            backgroundColor: "#0284c7",
+            backgroundColor: "#0d9488", // Restrained Teal accent
             borderRadius: 4,
           },
         ],
@@ -94,12 +96,12 @@ export const ChartController = {
         },
         scales: {
           x: {
-            ticks: { color: "#94a3b8", font: { size: 11, weight: 600 } },
+            ticks: { color: "#475569", font: { size: 11, weight: 600 } },
             grid: { display: false },
           },
           y: {
-            ticks: { color: "#94a3b8", font: { size: 10 } },
-            grid: { color: "rgba(51, 65, 85, 0.4)" },
+            ticks: { color: "#475569", font: { size: 10 } },
+            grid: { color: "#f1f5f9" },
           },
         },
       },

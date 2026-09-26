@@ -217,7 +217,7 @@ function setupFormListeners() {
       showToast("Prediction request failed: " + err.message, "error");
     } finally {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = `<span>Generate Predictive Forecast</span>`;
+      submitBtn.innerHTML = `<span>Run Predictive Forecast</span>`;
     }
   });
 }
@@ -312,6 +312,50 @@ function renderPredictionResult(result) {
     const startTime = result.predicted_window_start.substring(11, 16);
     const endTime = result.predicted_window_end.substring(11, 16);
     windowEl.innerText = `${startTime} – ${endTime} hrs`;
+  }
+
+  // Dynamic card border accent based on priority
+  if (pLevel === "CRITICAL") {
+    card.style.borderTopColor = "var(--risk-critical)";
+  } else if (pLevel === "HIGH") {
+    card.style.borderTopColor = "var(--risk-high)";
+  } else if (pLevel === "MEDIUM") {
+    card.style.borderTopColor = "var(--risk-moderate)";
+  } else {
+    card.style.borderTopColor = "var(--risk-low)";
+  }
+
+  // Hero Immediate Action Directive
+  const heroActionEl = document.getElementById("heroActionDirective");
+  if (heroActionEl) {
+    if (result.playbook && result.playbook.summary) {
+      heroActionEl.innerText = result.playbook.summary;
+    } else if (result.playbook && Array.isArray(result.playbook.actions) && result.playbook.actions.length > 0) {
+      heroActionEl.innerText = `${result.playbook.actions[0].title}: ${result.playbook.actions[0].description}`;
+    } else {
+      heroActionEl.innerText = `Dispatch nearest patrol to secure ${result.predicted_atm_id} in ${result.predicted_zone_id.replace("ZONE_", "Zone ")}; verify CCTV feeds and monitor cash-out corridor.`;
+    }
+  }
+
+  // Facility Type & Bank Network
+  const typeSummaryEl = document.getElementById("predAtmTypeSummary");
+  const bankSummaryEl = document.getElementById("predAtmBankSummary");
+  const isKiosk = Array.isArray(result.explanation_codes) && result.explanation_codes.includes("LOW_SURVEILLANCE_RISK");
+  if (typeSummaryEl) {
+    typeSummaryEl.innerText = isKiosk ? "Standalone Kiosk" : "Branch-Attached ATM";
+  }
+  if (bankSummaryEl) {
+    const topMatch = result.top_candidates && result.top_candidates[0];
+    const bName = topMatch && topMatch.bank_code ? topMatch.bank_code.replace("BANK_", "").replace("_SYNTH", "") : "ATM Network";
+    bankSummaryEl.innerText = `${bName} (${result.predicted_zone_id.replace("ZONE_", "Zone ")})`;
+  }
+
+  // Focus on Map button
+  const focusBtn = document.getElementById("btnFocusTargetMap");
+  if (focusBtn) {
+    focusBtn.onclick = () => {
+      MapController.centerATM(result.predicted_atm_id);
+    };
   }
 
   // Milestone 1 Feature 7: Tactical Investigator Action Playbook

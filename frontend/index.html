@@ -12,7 +12,7 @@
   <!-- Chart.js v4.4.1 (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
-  <!-- Custom Refined Dashboard Styling -->
+  <!-- Professional Light Operational Theme Styling -->
   <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
@@ -22,20 +22,20 @@
     <div class="brand-section">
       <div class="brand-shield">&#128737;</div>
       <div class="brand-text">
-        <h1>Cybercrime Cash Withdrawal Predictive Analytics</h1>
+        <h1>Cybercrime Predictive Analytics</h1>
         <div class="brand-meta">
-          <span>Predicting Likely Cash-Out Locations for Law Enforcement Intervention</span>
-          <span class="tag-synthetic">Synthetic &amp; Non-PII Research Prototype</span>
+          <span>Operational Cash-Out Location Forecasting &amp; Tactical Intervention</span>
+          <span class="tag-synthetic">Synthetic Prototype</span>
         </div>
       </div>
     </div>
     <div class="header-actions">
       <div class="status-pill">
         <span class="pulse-dot"></span>
-        <span>AI Pipeline Online</span>
+        <span>AI Pipeline Active</span>
       </div>
-      <button id="btnModelInfo" class="btn-audit" type="button" title="View Model Provenance and Verified Evaluation Metrics">
-        Model Provenance &amp; Evaluation Audit
+      <button id="btnModelInfo" class="btn-audit" type="button" title="View Model Provenance and Verified Partition 3 Evaluation Metrics">
+        Model Audit &amp; Metrics
       </button>
     </div>
   </header>
@@ -44,7 +44,7 @@
   <section class="context-strip">
     <div class="overview-counters">
       <div class="counter-item">
-        <span class="counter-label">Complaints</span>
+        <span class="counter-label">Total Complaints</span>
         <span class="counter-val" id="kpiTotalComplaints">4,000</span>
       </div>
       <div class="counter-item">
@@ -52,11 +52,11 @@
         <span class="counter-val" id="kpiActiveATMs">50</span>
       </div>
       <div class="counter-item">
-        <span class="counter-label">Cash-Out Events</span>
+        <span class="counter-label">Recorded Cash-Outs</span>
         <span class="counter-val" id="kpiCashouts">3,295</span>
       </div>
       <div class="counter-item">
-        <span class="counter-label">Dispatched Alerts</span>
+        <span class="counter-label">Active Clusters / Alerts</span>
         <span class="counter-val" id="kpiAlerts">0</span>
       </div>
     </div>
@@ -81,23 +81,23 @@
     <!-- Left Column: Prediction Workbench & Results -->
     <section class="workbench-card">
       <div class="card-heading">
-        <span>Real-Time Predictive Forecast</span>
-        <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: normal;">Scenario presets:</span>
+        <span class="heading-title">Predictive Incident Triage</span>
+        <span style="font-size: 0.7rem; color: var(--text-dim); font-weight: normal;">Scenario Presets:</span>
       </div>
 
       <!-- Quick Preset Scenario Chips -->
       <div class="presets-group">
-        <button type="button" class="btn-preset" data-preset="urgent_investment">Urgent Investment Scam</button>
-        <button type="button" class="btn-preset" data-preset="upi_phishing">UPI Phishing Sprint</button>
-        <button type="button" class="btn-preset" data-preset="delayed_loan">Delayed Loan Fraud</button>
+        <button type="button" class="btn-preset" data-preset="urgent_investment">Urgent Scam (&#8377;85k UPI)</button>
+        <button type="button" class="btn-preset" data-preset="upi_phishing">Phishing Sprint (&#8377;42k UPI)</button>
+        <button type="button" class="btn-preset" data-preset="delayed_loan">Delayed Fraud (&#8377;18k NEFT)</button>
       </div>
 
-      <!-- Complaint Intake Form (Grouped Fieldsets) -->
+      <!-- Complaint Intake Form -->
       <form id="predictionForm" autocomplete="off">
         
         <!-- Group 1: Incident Classification -->
         <fieldset class="form-fieldset">
-          <legend class="form-legend">Incident Details</legend>
+          <legend class="form-legend">Incident Classification</legend>
           <div class="form-row-2">
             <div class="input-box">
               <label for="crime_category">Crime Category</label>
@@ -110,7 +110,7 @@
               </select>
             </div>
             <div class="input-box">
-              <label for="reported_amount">Loss Amount (&#8377;)</label>
+              <label for="reported_amount">Reported Loss Amount (&#8377;)</label>
               <input type="number" id="reported_amount" name="reported_amount" value="85000" min="1000" step="500" required>
             </div>
           </div>
@@ -141,7 +141,7 @@
           </div>
           <div class="form-row-2" style="margin-top: 6px;">
             <div class="input-box">
-              <label for="mule_branch_zone">Mule Account Branch Zone</label>
+              <label for="mule_branch_zone">Mule Branch Zone</label>
               <select id="mule_branch_zone" name="mule_branch_zone" required>
                 <option value="ZONE_WEST">Zone West (Market Corridor)</option>
                 <option value="ZONE_NORTH">Zone North (Transport Nexus)</option>
@@ -191,143 +191,224 @@
         </fieldset>
 
         <button type="submit" id="btnPredict" class="btn-submit-forecast">
-          <span>Generate Predictive Forecast</span>
+          <span>Run Predictive Forecast</span>
         </button>
       </form>
 
-      <!-- Forecast Output Result Card -->
+      <!-- Forecast Output Result Card (Hero Presentation) -->
       <div id="forecastCard" class="forecast-result-card">
-        <div class="forecast-top-row">
-          <span style="font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
-            Actionable Intelligence Forecast
-          </span>
-          <span id="predRiskBadge" class="risk-tag risk-critical">CRITICAL RISK</span>
-        </div>
-
-        <!-- Operational Intervention Priority (Milestone 1, Feature 6) -->
-        <div class="priority-score-card">
-          <div class="priority-score-header">
-            <div class="priority-score-meta">
-              <span class="priority-label">Intervention Priority</span>
-              <span id="predPriorityBadge" class="priority-tag priority-critical">CRITICAL</span>
+        <!-- 1. Hero Alert Header (Urgency & Score) -->
+        <div class="hero-alert-header">
+          <div class="hero-urgency-cluster">
+            <span id="predPriorityBadge" class="priority-tag priority-critical">CRITICAL</span>
+            <div class="hero-score-pill">
+              <span class="hero-score-label">Priority</span>
+              <span id="predPriorityScore" class="hero-score-val">--</span>
+              <span class="hero-score-denom">/100</span>
             </div>
-            <div class="priority-score-value-box">
-              <span id="predPriorityScore" class="priority-num">--</span>
-              <span class="priority-denom">/100</span>
-            </div>
+            <span id="predRiskBadge" class="risk-tag risk-critical" style="display:none;">CRITICAL RISK</span>
           </div>
-          <div class="priority-progress-bar">
-            <div id="predPriorityProgress" class="priority-progress-fill" style="width: 0%;"></div>
-          </div>
-          <div id="predPriorityReasons" class="priority-reasons-list">
-            <!-- Dynamically populated with 2-4 short reasons -->
-          </div>
-        </div>
-
-        <div class="target-atm-display">
-          <div>
-            <div style="font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">
-              Forecasted ATM Location
-            </div>
-            <span id="predAtmId" class="atm-code">--</span>
-            <span id="predZoneId" style="font-size: 0.78rem; color: var(--text-muted); margin-left: 6px;">--</span>
-          </div>
-          <div style="text-align: right;">
-            <div style="font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">
-              Confidence
-            </div>
-            <span id="predConfidence" class="atm-confidence">--%</span>
-          </div>
-        </div>
-
-        <div class="tactical-window-strip">
-          <span>&#9201; Estimated Intervention Window:</span>
-          <span id="predWindow" style="font-weight: 700; color: var(--accent-blue);">--</span>
-        </div>
-
-        <!-- Tactical Investigator Playbook (Milestone 1, Feature 7) -->
-        <div id="playbookCard" class="playbook-container">
-          <div class="playbook-header">
-            <div class="playbook-title-group">
-              <span class="playbook-badge-icon">SOP</span>
-              <span class="playbook-title">Tactical Action Playbook</span>
-              <span id="playbookDispositionBadge" class="playbook-disposition-tag">TACTICAL INTERCEPTION</span>
-            </div>
-            <button type="button" id="btnCopyDispatch" class="btn-copy-brief" title="Copy Dispatch Brief for Radio / Field Patrol">
+          <div class="hero-header-actions">
+            <button type="button" id="btnCopyDispatch" class="btn-copy-brief" title="Copy Dispatch Brief for Field Patrol">
               <span id="copyBriefIcon">&#128203;</span>
-              <span id="copyBriefText">Copy Dispatch Brief</span>
+              <span id="copyBriefText">Copy Brief</span>
+            </button>
+            <button type="button" id="btnFocusTargetMap" class="btn-action-ghost" title="Focus Target ATM on Tactical Map">
+              <span>&#128506; Focus Map</span>
             </button>
           </div>
-          <div id="playbookSummary" class="playbook-summary-banner">
-            <!-- Dynamically populated summary -->
-          </div>
-          <div id="playbookActionsList" class="playbook-actions-list">
-            <!-- Dynamically populated ordered action steps -->
+        </div>
+
+        <!-- 2. Primary Immediate Action Callout (Answering "What action is recommended?") -->
+        <div class="hero-action-callout">
+          <div class="action-callout-icon">&#9889;</div>
+          <div class="action-callout-body">
+            <div class="action-callout-label">Recommended Immediate Action</div>
+            <div id="heroActionDirective" class="action-callout-text">
+              Dispatch patrol to verify and secure predicted ATM perimeter.
+            </div>
           </div>
         </div>
 
-        <!-- Progressive Disclosure: Explainability Reason Codes -->
-        <details class="why-prediction-accordion" open>
-          <summary>Why this prediction? (Reason Codes)</summary>
-          <div id="predReasons" class="reasons-tags-flex">
-            <!-- Dynamically populated -->
+        <!-- 3. Key Telemetry Grid (Where is risk, when, confidence, type) -->
+        <div class="hero-telemetry-grid">
+          <div class="telemetry-cell">
+            <div class="telemetry-label">Predicted Target</div>
+            <div class="telemetry-main">
+              <span id="predAtmId" class="atm-code">--</span>
+            </div>
+            <div id="predZoneId" class="telemetry-sub">--</div>
+          </div>
+          <div class="telemetry-cell">
+            <div class="telemetry-label">Intervention Window</div>
+            <div id="predWindow" class="telemetry-main telemetry-highlight">--</div>
+            <div class="telemetry-sub">Empirical 25th–75th IQR</div>
+          </div>
+          <div class="telemetry-cell">
+            <div class="telemetry-label">Spatial Confidence</div>
+            <div id="predConfidence" class="telemetry-main">--%</div>
+            <div class="telemetry-sub">Calibrated Top-1</div>
+          </div>
+          <div class="telemetry-cell">
+            <div class="telemetry-label">Target Facility</div>
+            <div id="predAtmTypeSummary" class="telemetry-main" style="font-size: 0.85rem;">ATM Facility</div>
+            <div id="predAtmBankSummary" class="telemetry-sub">Bank Network</div>
+          </div>
+        </div>
+
+        <!-- Priority Progress Bar -->
+        <div class="priority-progress-bar">
+          <div id="predPriorityProgress" class="priority-progress-fill" style="width: 0%;"></div>
+        </div>
+
+        <!-- 4. Progressive Disclosure: Tactical Playbook (SOP) -->
+        <details id="playbookCard" class="intel-accordion" open>
+          <summary class="intel-summary">
+            <div class="summary-left">
+              <span class="sop-tag">SOP</span>
+              <span class="summary-title">Tactical Action Playbook</span>
+              <span id="playbookDispositionBadge" class="playbook-disposition-tag">TACTICAL INTERCEPTION</span>
+            </div>
+            <span class="summary-toggle-hint">Toggle Checklist</span>
+          </summary>
+          <div class="accordion-content">
+            <div id="playbookSummary" class="playbook-summary-banner">
+              <!-- Dynamically populated summary -->
+            </div>
+            <div id="playbookActionsList" class="playbook-actions-list">
+              <!-- Dynamically populated ordered action steps -->
+            </div>
           </div>
         </details>
 
-        <!-- Ranked Candidate ATM Locations Table -->
-        <div style="font-size: 0.72rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">
-          Ranked Candidate ATMs (Top 5)
-        </div>
-        <div class="candidate-table-wrap">
-          <table class="mini-table">
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>ATM ID</th>
-                <th>Bank</th>
-                <th>Zone</th>
-                <th>Probability</th>
-                <th>Distribution</th>
-              </tr>
-            </thead>
-            <tbody id="candidateTableBody">
+        <!-- 5. Progressive Disclosure: Why this prediction? (Explainability) -->
+        <details class="intel-accordion">
+          <summary class="intel-summary">
+            <div class="summary-left">
+              <span class="summary-title">Why this prediction?</span>
+              <span class="summary-count-pill">Explainability</span>
+            </div>
+            <span class="summary-toggle-hint">Show Factors</span>
+          </summary>
+          <div class="accordion-content">
+            <div class="factor-section-title">Priority Contributing Factors</div>
+            <div id="predPriorityReasons" class="priority-reasons-list">
+              <!-- Dynamically populated with 2-4 short reasons -->
+            </div>
+            <div class="factor-section-title" style="margin-top: 8px;">Spatial &amp; Behavioral Reason Codes</div>
+            <div id="predReasons" class="reasons-tags-flex">
               <!-- Dynamically populated -->
-            </tbody>
-          </table>
-        </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- 6. Progressive Disclosure: Alternative Ranked ATMs (Top 2–5) -->
+        <details class="intel-accordion">
+          <summary class="intel-summary">
+            <div class="summary-left">
+              <span class="summary-title">Ranked Candidate ATMs</span>
+              <span class="summary-count-pill">Top 5 Candidates</span>
+            </div>
+            <span class="summary-toggle-hint">Show Table</span>
+          </summary>
+          <div class="accordion-content">
+            <div class="candidate-table-wrap">
+              <table class="mini-table">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>ATM ID</th>
+                    <th>Bank</th>
+                    <th>Zone</th>
+                    <th>Probability</th>
+                    <th>Distribution</th>
+                  </tr>
+                </thead>
+                <tbody id="candidateTableBody">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
       </div>
 
     </section>
 
-    <!-- Right Column: Geospatial Tactical Map -->
+    <!-- Right Column: Geospatial Tactical Map & Selected Location Intelligence -->
     <section class="workbench-card map-panel">
       <div class="card-heading">
-        <span>Tactical ATM Network &amp; Geographic Risk Map</span>
+        <div class="heading-title-group">
+          <span class="heading-title">Tactical ATM Network &amp; Geospatial Operations</span>
+          <span class="heading-badge">50 Monitored Kiosks</span>
+        </div>
         <div class="map-controls-row">
-          <span style="font-size: 0.7rem; color: var(--text-muted);">Zone Filter:</span>
-          <button type="button" class="btn-zone-filter active" data-zone="ALL">All</button>
-          <button type="button" class="btn-zone-filter" data-zone="ZONE_CENTRAL">Central</button>
-          <button type="button" class="btn-zone-filter" data-zone="ZONE_NORTH">North</button>
-          <button type="button" class="btn-zone-filter" data-zone="ZONE_SOUTH">South</button>
-          <button type="button" class="btn-zone-filter" data-zone="ZONE_WEST">West</button>
-          <button type="button" class="btn-zone-filter" data-zone="ZONE_EAST">East</button>
+          <div class="zone-filter-pills">
+            <button type="button" class="btn-zone-filter active" data-zone="ALL">All Zones</button>
+            <button type="button" class="btn-zone-filter" data-zone="ZONE_CENTRAL">Central</button>
+            <button type="button" class="btn-zone-filter" data-zone="ZONE_NORTH">North</button>
+            <button type="button" class="btn-zone-filter" data-zone="ZONE_SOUTH">South</button>
+            <button type="button" class="btn-zone-filter" data-zone="ZONE_WEST">West</button>
+            <button type="button" class="btn-zone-filter" data-zone="ZONE_EAST">East</button>
+          </div>
+          <select id="quickAtmSelect" class="quick-atm-select" title="Quick Jump to ATM">
+            <option value="">Jump to ATM...</option>
+          </select>
         </div>
       </div>
 
-      <div id="map" class="leaflet-map-viewport"></div>
+      <!-- Map Viewport -->
+      <div class="map-wrapper">
+        <div id="map" class="leaflet-map-viewport"></div>
+        <div class="map-floating-legend">
+          <div class="legend-item"><span class="legend-dot dot-branch"></span> Branch-Attached ATM</div>
+          <div class="legend-item"><span class="legend-dot dot-kiosk"></span> Standalone Kiosk (High Risk)</div>
+          <div class="legend-item"><span class="legend-dot dot-target"></span> Predicted Target (500m Perimeter)</div>
+        </div>
+      </div>
 
-      <div class="map-footer-legend">
-        <div class="legend-node">
-          <span class="circle-branch"></span>
-          <span>Branch-Attached ATM</span>
+      <!-- Selected Location / Map Intelligence Panel (Contextual Data) -->
+      <div id="selectedLocationPanel" class="selected-location-panel">
+        <div class="location-panel-header">
+          <div class="location-header-title">
+            <span class="location-icon">&#128205;</span>
+            <div>
+              <div class="location-name-row">
+                <span id="selAtmId" class="selected-atm-id">No ATM Selected</span>
+                <span id="selAtmStatus" class="status-badge-neutral">Operational Telemetry</span>
+                <span id="selAtmBank" class="badge-bank">BANK</span>
+              </div>
+              <div id="selAtmZone" class="selected-atm-sub">Click any ATM marker on the map or run a prediction to inspect tactical intelligence</div>
+            </div>
+          </div>
+          <div class="location-header-actions">
+            <button type="button" id="btnCenterSelectedAtm" class="btn-sm-action" style="display:none;">
+              Center on Map
+            </button>
+          </div>
         </div>
-        <div class="legend-node">
-          <span class="circle-kiosk"></span>
-          <span>Standalone Kiosk (High Vulnerability)</span>
+
+        <div id="selectedLocationDetails" class="location-metrics-row" style="display:none;">
+          <div class="loc-metric-item">
+            <span class="loc-label">Facility Type</span>
+            <span id="selAtmType" class="loc-val">--</span>
+          </div>
+          <div class="loc-metric-item">
+            <span class="loc-label">Cash Capacity</span>
+            <span id="selAtmCapacity" class="loc-val">--</span>
+          </div>
+          <div class="loc-metric-item">
+            <span class="loc-label">Historical Cash-Outs</span>
+            <span id="selAtmCashouts" class="loc-val">--</span>
+          </div>
+          <div class="loc-metric-item">
+            <span class="loc-label">Coordinates</span>
+            <span id="selAtmCoords" class="loc-val" style="font-family: monospace; font-size: 0.72rem;">--</span>
+          </div>
         </div>
-        <div class="legend-node">
-          <span class="circle-target"></span>
-          <span>Forecasted Target / Interception Perimeter</span>
+
+        <div id="selectedLocationAdvisory" class="location-advisory-box" style="display:none;">
+          <!-- Contextual advisory text populated dynamically -->
         </div>
       </div>
     </section>
@@ -349,7 +430,7 @@
           <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">
             Crime Category Distribution
           </div>
-          <div style="height: 180px; position: relative;">
+          <div style="height: 175px; position: relative;">
             <canvas id="categoryChart"></canvas>
           </div>
         </div>
@@ -357,7 +438,7 @@
           <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">
             Payment Rail Incident Volume
           </div>
-          <div style="height: 180px; position: relative;">
+          <div style="height: 175px; position: relative;">
             <canvas id="channelChart"></canvas>
           </div>
         </div>
@@ -391,7 +472,7 @@
           <span id="clusterStatusSummary">Scanning rolling window for spatiotemporal cash-out concentrations...</span>
         </div>
         <div class="cluster-filters-row">
-          <label for="clusterWindowSelect" style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">Rolling Window:</label>
+          <label for="clusterWindowSelect" style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">Rolling Window:</label>
           <select id="clusterWindowSelect" class="mini-select">
             <option value="6">6 Hours</option>
             <option value="12">12 Hours</option>
@@ -400,13 +481,13 @@
             <option value="72">72 Hours</option>
             <option value="168">7 Days</option>
           </select>
-          <label for="clusterSourceSelect" style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-left: 6px;">Source:</label>
+          <label for="clusterSourceSelect" style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600; margin-left: 4px;">Source:</label>
           <select id="clusterSourceSelect" class="mini-select">
             <option value="all" selected>All (Alerts + Cashouts)</option>
             <option value="predictions">Predictions Only</option>
             <option value="cashouts">Confirmed Cashouts</option>
           </select>
-          <button type="button" id="btnRefreshClusters" class="btn-zone-filter" style="margin-left: 6px;">Refresh</button>
+          <button type="button" id="btnRefreshClusters" class="btn-zone-filter" style="margin-left: 4px;">Refresh</button>
         </div>
       </div>
       <div class="candidate-table-wrap" style="max-height: 280px; overflow-y: auto;">
@@ -436,10 +517,10 @@
   <div id="modelModal" class="modal-overlay">
     <div class="modal-dialog">
       <div class="modal-title-row">
-        <h3 style="font-size: 1.05rem; font-weight: 700;">Model Provenance &amp; Evaluation Audit</h3>
+        <h3 style="font-size: 1rem; font-weight: 700;">Model Provenance &amp; Evaluation Audit</h3>
         <button id="closeModalBtn" class="btn-close-modal" type="button">&times;</button>
       </div>
-      <div style="font-size: 0.82rem; line-height: 1.6; color: var(--text-main);">
+      <div style="font-size: 0.8rem; line-height: 1.6; color: var(--text-main);">
         <p><b>Model Architecture:</b> <span id="modalModelName">RandomForest + Sigmoid Calibrator (FrozenEstimator)</span></p>
         <p><b>Evaluation Protocol:</b> Chronological Partition 3 (Untouched Future Period Only)</p>
         <p><b>Test Sample Size:</b> <span id="modalSamples">659 complaints</span></p>
@@ -447,7 +528,7 @@
         <div class="metrics-quad-grid">
           <div class="quad-box">
             <div class="quad-title">Top-1 Spatial Accuracy</div>
-            <div id="modalTop1" class="quad-val" style="color: var(--accent-blue);">10.17%</div>
+            <div id="modalTop1" class="quad-val" style="color: var(--accent-teal);">10.17%</div>
           </div>
           <div class="quad-box">
             <div class="quad-title">Top-3 Spatial Accuracy</div>
@@ -459,32 +540,26 @@
           </div>
           <div class="quad-box">
             <div class="quad-title">Zone-Level Accuracy</div>
-            <div id="modalZone" class="quad-val" style="color: #a855f7;">68.89%</div>
+            <div id="modalZone" class="quad-val" style="color: var(--accent-teal-dark);">68.89%</div>
           </div>
         </div>
 
-        <p><b>Temporal Window Coverage:</b> <span id="modalTemporal">50.38% (Empirical IQR 25th–75th)</span></p>
-        <p><b>Calibrated Multi-Class Brier Score:</b> <span id="modalBrier">0.9726</span></p>
-        <p><b>Calibrated Log Loss:</b> <span id="modalLogLoss">3.5199</span></p>
-        
-        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 12px; background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-          Note: Evaluated on Partition 3 with strict chronological ordering. Zero data leakage: preprocessors and models were fitted exclusively on Partition 1; calibration used Partition 2; Partition 3 was kept completely unseen. Random baseline for 47 classes is 2.13% (Top-1 demonstrates ~4.8x empirical lift).
+        <div style="background: var(--bg-card-subtle); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 10px; font-size: 0.74rem;">
+          <div><b>Temporal 25th–75th Window Coverage:</b> <span id="modalTemporal">50.38%</span></div>
+          <div><b>Calibrated Brier Score:</b> <span id="modalBrier">0.9726</span></div>
+          <div><b>Calibrated Log-Loss:</b> <span id="modalLogLoss">3.5199</span></div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 6. Footer -->
+  <!-- 6. Footer Information Bar -->
   <footer class="app-footer-bar">
-    <div>
-      Cybercrime Cash Withdrawal Predictive Analytics Framework &bull; Academic Proof-of-Concept &bull; Synthetic / Non-PII Data Only
-    </div>
-    <div>
-      Privacy-by-Design &bull; FastAPI + Scikit-Learn
-    </div>
+    <div>Cybercrime Predictive Analytics Framework &middot; Law Enforcement Operational Prototype</div>
+    <div>Phase 2 Rigorous ML Evaluated &middot; Point-in-Time Historical Safety Verified</div>
   </footer>
 
-  <!-- App Script (Module) -->
+  <!-- Main Application Script (ES Module) -->
   <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>
