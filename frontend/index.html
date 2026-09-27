@@ -93,8 +93,14 @@
       </div>
 
       <!-- Complaint Intake Form -->
-      <form id="predictionForm" autocomplete="off">
+      <form id="predictionForm" autocomplete="off" novalidate>
         
+        <!-- General Form Error Banner -->
+        <div id="formGeneralError" class="form-general-error" style="display:none;" role="alert">
+          <span class="general-error-icon">&#9888;</span>
+          <span class="error-msg"></span>
+        </div>
+
         <!-- Group 1: Incident Classification -->
         <fieldset class="form-fieldset">
           <legend class="form-legend">Incident Classification</legend>
@@ -108,10 +114,12 @@
                 <option value="EXTORTION">Extortion / Blackmail</option>
                 <option value="LOAN_SCAM">Instant Loan App</option>
               </select>
+              <span class="field-error" id="err_crime_category"></span>
             </div>
             <div class="input-box">
               <label for="reported_amount">Reported Loss Amount (&#8377;)</label>
               <input type="number" id="reported_amount" name="reported_amount" value="85000" min="1000" step="500" required>
+              <span class="field-error" id="err_reported_amount"></span>
             </div>
           </div>
         </fieldset>
@@ -127,6 +135,7 @@
                 <option value="IMPS">IMPS (Immediate Transfer)</option>
                 <option value="NEFT">NEFT (Batch Clearing)</option>
               </select>
+              <span class="field-error" id="err_payment_channel"></span>
             </div>
             <div class="input-box">
               <label for="mule_bank_code">Beneficiary Mule Bank</label>
@@ -137,6 +146,7 @@
                 <option value="BANK_PNB_SYNTH">Punjab National Bank (Synth)</option>
                 <option value="BANK_AXIS_SYNTH">Axis Bank (Synth)</option>
               </select>
+              <span class="field-error" id="err_mule_bank_code"></span>
             </div>
           </div>
           <div class="form-row-2" style="margin-top: 6px;">
@@ -149,6 +159,7 @@
                 <option value="ZONE_SOUTH">Zone South (Institutional Hub)</option>
                 <option value="ZONE_EAST">Zone East (Industrial Fringe)</option>
               </select>
+              <span class="field-error" id="err_mule_branch_zone"></span>
             </div>
             <div class="input-box">
               <label for="mule_account_tier">Account Classification</label>
@@ -157,6 +168,7 @@
                 <option value="STANDARD">Standard Regular Account</option>
                 <option value="RURAL_REGIONAL">Regional Rural Bank Account</option>
               </select>
+              <span class="field-error" id="err_mule_account_tier"></span>
             </div>
           </div>
         </fieldset>
@@ -168,10 +180,12 @@
             <div class="input-box">
               <label for="reporting_delay_mins">Reporting Delay (Mins)</label>
               <input type="number" id="reporting_delay_mins" name="reporting_delay_mins" value="25" min="5" max="720" required>
+              <span class="field-error" id="err_reporting_delay_mins"></span>
             </div>
             <div class="input-box">
               <label for="incident_hour">Incident Hour (0–23)</label>
               <input type="number" id="incident_hour" name="incident_hour" value="15" min="0" max="23" required>
+              <span class="field-error" id="err_incident_hour"></span>
             </div>
           </div>
           <div class="form-row-2" style="margin-top: 6px;">
@@ -186,6 +200,7 @@
                 <option value="5">Saturday</option>
                 <option value="6">Sunday</option>
               </select>
+              <span class="field-error" id="err_incident_day_of_week"></span>
             </div>
           </div>
         </fieldset>

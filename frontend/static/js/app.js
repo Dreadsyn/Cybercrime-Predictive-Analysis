@@ -153,15 +153,74 @@ function setupZoneFilterListeners() {
 }
 
 /**
- * Setup prediction intake form, presets, and submission handling.
+ * Setup prediction intake form, presets, validation, and submission handling.
  */
 function setupFormListeners() {
   const form = document.getElementById("predictionForm");
   const submitBtn = document.getElementById("btnPredict");
+  let isPredicting = false;
+
+  function clearFormErrors() {
+    const generalErr = document.getElementById("formGeneralError");
+    if (generalErr) {
+      generalErr.style.display = "none";
+      const msgEl = generalErr.querySelector(".error-msg");
+      if (msgEl) msgEl.innerText = "";
+    }
+    document.querySelectorAll(".field-error").forEach(el => {
+      el.innerText = "";
+      el.classList.remove("active");
+    });
+    document.querySelectorAll(".input-invalid").forEach(el => {
+      el.classList.remove("input-invalid");
+    });
+  }
+
+  function setFieldError(fieldName, message) {
+    const errEl = document.getElementById(`err_${fieldName}`);
+    const inputEl = document.getElementById(fieldName);
+    if (errEl) {
+      errEl.innerText = message;
+      errEl.classList.add("active");
+    }
+    if (inputEl) {
+      inputEl.classList.add("input-invalid");
+    }
+  }
+
+  function setGeneralError(message) {
+    const generalErr = document.getElementById("formGeneralError");
+    if (generalErr) {
+      const msgEl = generalErr.querySelector(".error-msg");
+      if (msgEl) msgEl.innerText = message;
+      generalErr.style.display = "flex";
+    }
+  }
+
+  // Real-time error clearing when user edits any control
+  form.querySelectorAll("input, select").forEach(control => {
+    const clearCurrent = () => {
+      control.classList.remove("input-invalid");
+      const errEl = document.getElementById(`err_${control.id}`);
+      if (errEl) {
+        errEl.innerText = "";
+        errEl.classList.remove("active");
+      }
+      const remaining = form.querySelectorAll(".input-invalid");
+      if (remaining.length === 0) {
+        const generalErr = document.getElementById("formGeneralError");
+        if (generalErr) generalErr.style.display = "none";
+      }
+    };
+    control.addEventListener("input", clearCurrent);
+    control.addEventListener("change", clearCurrent);
+  });
 
   // Preset Buttons
   document.querySelectorAll("[data-preset]").forEach(btn => {
     btn.addEventListener("click", () => {
+      clearFormErrors();
+
       // Toggle active style
       document.querySelectorAll("[data-preset]").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
@@ -180,20 +239,75 @@ function setupFormListeners() {
   // Form Submit
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (isPredicting) return; // Prevent duplicate concurrent submissions
+
+    clearFormErrors();
+
+    // Client-side pre-validation
+    let hasClientErrors = false;
+    const rawAmount = form.elements["reported_amount"].value.trim();
+    const rawDelay = form.elements["reporting_delay_mins"].value.trim();
+    const rawHour = form.elements["incident_hour"].value.trim();
+    const rawDay = form.elements["incident_day_of_week"].value;
+
+    const amount = parseFloat(rawAmount);
+    if (!rawAmount || isNaN(amount) || amount <= 0) {
+      setFieldError("reported_amount", "Reported loss amount must be greater than ₹0.");
+      hasClientErrors = true;
+    }
+
+    const delay = parseFloat(rawDelay);
+    if (!rawDelay || isNaN(delay) || delay < 0) {
+      setFieldError("reporting_delay_mins", "Reporting delay must be 0 minutes or greater.");
+      hasClientErrors = true;
+    }
+
+    const hour = parseInt(rawHour, 10);
+    if (!rawHour || isNaN(hour) || hour < 0 || hour > 23) {
+      setFieldError("incident_hour", "Incident hour must be an integer between 0 and 23.");
+      hasClientErrors = true;
+    }
+
+    const day = parseInt(rawDay, 10);
+    if (isNaN(day) || day < 0 || day > 6) {
+      setFieldError("incident_day_of_week", "Incident day of week must be between 0 (Mon) and 6 (Sun).");
+      hasClientErrors = true;
+    }
+
+    const categoricalFields = [
+      ["crime_category", "Crime category is required."],
+      ["payment_channel", "Payment rail is required."],
+      ["mule_bank_code", "Beneficiary mule bank is required."],
+      ["mule_branch_zone", "Mule branch zone is required."],
+      ["mule_account_tier", "Account classification is required."],
+    ];
+
+    categoricalFields.forEach(([fId, msg]) => {
+      if (!form.elements[fId] || !form.elements[fId].value) {
+        setFieldError(fId, msg);
+        hasClientErrors = true;
+      }
+    });
+
+    if (hasClientErrors) {
+      setGeneralError("Please correct the invalid fields highlighted below before submitting.");
+      return;
+    }
+
+    isPredicting = true;
     submitBtn.disabled = true;
     submitBtn.innerHTML = `<span>Forecasting Target Location...</span>`;
 
-    const formData = new FormData(form);
     const payload = {
-      crime_category: formData.get("crime_category"),
-      reported_amount: parseFloat(formData.get("reported_amount")),
-      payment_channel: formData.get("payment_channel"),
-      mule_bank_code: formData.get("mule_bank_code"),
-      mule_account_tier: formData.get("mule_account_tier"),
-      mule_branch_zone: formData.get("mule_branch_zone"),
-      reporting_delay_mins: parseFloat(formData.get("reporting_delay_mins")),
-      incident_hour: parseInt(formData.get("incident_hour"), 10),
-      incident_day_of_week: parseInt(formData.get("incident_day_of_week"), 10),
+      crime_category: form.elements["crime_category"].value,
+      reported_amount: amount,
+      payment_channel: form.elements["payment_channel"].value,
+      mule_bank_code: form.elements["mule_bank_code"].value,
+      mule_account_tier: form.elements["mule_account_tier"].value,
+      mule_branch_zone: form.elements["mule_branch_zone"].value,
+      reporting_delay_mins: delay,
+      incident_hour: hour,
+      incident_day_of_week: day,
       complaint_timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
     };
 
@@ -214,8 +328,17 @@ function setupFormListeners() {
 
       showToast(`Forecast Generated: Target ${result.predicted_atm_id} (Priority: ${result.priority_level} · Score: ${result.priority_score}/100)`, "success");
     } catch (err) {
-      showToast("Prediction request failed: " + err.message, "error");
+      if (err.fieldErrors && Object.keys(err.fieldErrors).length > 0) {
+        Object.entries(err.fieldErrors).forEach(([field, msg]) => {
+          setFieldError(field, msg);
+        });
+        setGeneralError(err.message || "Validation failed on submitted fields. Please check the marked inputs.");
+      } else {
+        setGeneralError(err.message || "An unexpected error occurred while processing the forecast.");
+      }
+      showToast(err.message || "Prediction request failed.", "error");
     } finally {
+      isPredicting = false;
       submitBtn.disabled = false;
       submitBtn.innerHTML = `<span>Run Predictive Forecast</span>`;
     }

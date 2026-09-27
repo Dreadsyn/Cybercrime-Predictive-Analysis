@@ -402,6 +402,50 @@ body {
   box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.12);
 }
 
+/* Form Validation & Error Styles */
+.form-general-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #9f1239;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+  font-size: 0.74rem;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: var(--shadow-xs);
+}
+
+.general-error-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  flex-shrink: 0;
+  color: #e11d48;
+}
+
+.input-box input.input-invalid,
+.input-box select.input-invalid {
+  border-color: #e11d48 !important;
+  background-color: #fffafb;
+  box-shadow: 0 0 0 2px rgba(225, 29, 72, 0.12) !important;
+}
+
+.field-error {
+  display: none;
+  font-size: 0.65rem;
+  color: #be123c;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 2px;
+}
+
+.field-error.active {
+  display: block;
+}
+
 .btn-submit-forecast {
   background: var(--accent-teal);
   color: #ffffff;

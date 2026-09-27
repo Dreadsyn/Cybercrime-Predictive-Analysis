@@ -21,9 +21,10 @@ import json
 import sys
 from pathlib import Path
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -33,7 +34,7 @@ sys.path.insert(0, str(BASE_DIR))
 
 # Database and Schemas
 from backend.app.cluster_engine import detect_emerging_clusters
-from backend.app.database import get_db_connection
+from backend.app.database import get_db_connection, verify_database_readiness
 from backend.app.ml_engine import ml_engine
 from backend.app.playbook_engine import generate_investigator_playbook
 from backend.app.schemas import (
@@ -55,6 +56,68 @@ app = FastAPI(
     description="Forecast likely cybercrime cash withdrawal ATM locations in advance for proactive intervention.",
     version="1.0.0",
 )
+
+
+# ==============================================================================
+# EXCEPTION HANDLERS (SANITIZED, SECURE ERROR RESPONSES)
+# ==============================================================================
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Sanitizes Pydantic input validation errors into structured, human-readable messages
+    without exposing internal Python tracebacks or implementation details.
+    """
+    field_errors = {}
+    error_messages = []
+
+    for err in exc.errors():
+        loc = err.get("loc", [])
+        field = str(loc[-1]) if loc else "field"
+        raw_msg = err.get("msg", "Invalid input value.")
+        if raw_msg.startswith("Value error, "):
+            raw_msg = raw_msg[len("Value error, "):]
+        field_errors[field] = raw_msg
+        error_messages.append(f"{field}: {raw_msg}")
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": "Validation Error",
+            "detail": "; ".join(error_messages) if error_messages else "Invalid input data provided.",
+            "field_errors": field_errors,
+        },
+    )
+
+
+@app.exception_handler(HTTPException)
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    """
+    Standardizes HTTP error responses with clean, actionable messages.
+    """
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": "Request Failed" if exc.status_code < 500 else "Service Unavailable",
+            "detail": str(exc.detail),
+        },
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """
+    Catches unhandled internal exceptions, strictly preventing tracebacks, SQLite errors,
+    or internal server details from leaking to the client.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "Internal Server Error",
+            "detail": "An internal operational error occurred while processing the request. Please contact system administration.",
+        },
+    )
+
 
 # Mount static assets
 if STATIC_DIR.exists():
@@ -270,12 +333,31 @@ def predict_cashout_location(request: PredictionRequest):
     4. Point-in-Time Explainability Audit
     5. Actionable risk assignment & database logging
     """
+    # 1. Model service readiness check
+    if ml_engine is None or not ml_engine.is_ready():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Predictive analytics model engine is not ready or required model artifacts are missing.",
+        )
+
+    # 2. Database dependency readiness check
     try:
         with get_db_connection() as conn:
+            is_ready, db_err = verify_database_readiness(conn)
+            if not is_ready:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=db_err,
+                )
             result = ml_engine.predict(request.model_dump(), conn)
-        return result
+            return result
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Inference execution failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Predictive inference execution failed due to an internal system error. Please retry or verify system logs.",
+        )
 
 
 @app.get("/api/predictions", tags=["Predictive Analytics"])

@@ -13,16 +13,23 @@ Tests:
 9. Model provenance and verified Phase 2 metrics (/api/model-info)
 """
 
+import asyncio
+import json
+import sqlite3
 import sys
 from pathlib import Path
+from unittest.mock import patch
 import pytest
+from fastapi.exceptions import HTTPException, RequestValidationError
 from pydantic import ValidationError
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from backend.app.main import (
+    app,
     generate_playbook_endpoint,
+    generic_exception_handler,
     get_dashboard_stats,
     get_emerging_clusters,
     get_model_information,
@@ -31,14 +38,16 @@ from backend.app.main import (
     list_atms,
     list_complaints,
     list_predictions,
+    ml_engine,
     predict_cashout_location,
     serve_dashboard,
+    validation_exception_handler,
 )
 from backend.app.cluster_engine import detect_emerging_clusters
-from backend.app.database import get_db_connection
+from backend.app.database import get_db_connection, verify_database_readiness
 from backend.app.ml_engine import compute_intervention_priority
 from backend.app.playbook_engine import generate_investigator_playbook
-from backend.app.schemas import PlaybookRequest, PredictionRequest
+from backend.app.schemas import ComplaintCreate, PlaybookRequest, PredictionRequest
 
 
 def test_health_endpoint():
@@ -408,5 +417,213 @@ def test_cluster_detection_threshold_and_empty_handling():
     empty_zone = get_emerging_clusters(window_hours=24, min_events=2, zone="ZONE_NON_EXISTENT")
     assert empty_zone["total_clusters"] == 0
     assert empty_zone["clusters"] == []
+
+
+# ==============================================================================
+# FEATURE 3: VALIDATION & ERROR HANDLING TESTS
+# ==============================================================================
+
+def test_validation_categorical_domain_rejections():
+    """Verifies that invalid categorical values across all fields are strictly rejected."""
+    base_kwargs = {
+        "crime_category": "INVESTMENT_FRAUD",
+        "reported_amount": 50000.0,
+        "payment_channel": "UPI",
+        "mule_bank_code": "BANK_SBI_SYNTH",
+        "mule_account_tier": "NEW_DIGITAL",
+        "mule_branch_zone": "ZONE_WEST",
+        "reporting_delay_mins": 30.0,
+        "incident_hour": 14,
+        "incident_day_of_week": 2,
+    }
+
+    # Invalid crime category
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "crime_category": "CRYPTO_RANSOM"})
+    assert "Invalid crime_category" in str(exc.value)
+
+    # Invalid payment channel
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "payment_channel": "BITCOIN"})
+    assert "Invalid payment_channel" in str(exc.value)
+
+    # Invalid mule bank code
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "mule_bank_code": "BANK_UNKNOWN_XYZ"})
+    assert "Invalid mule_bank_code" in str(exc.value)
+
+    # Invalid mule branch zone
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "mule_branch_zone": "ZONE_NORTH_EAST"})
+    assert "Invalid mule_branch_zone" in str(exc.value)
+
+    # Invalid mule account tier
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "mule_account_tier": "VIP_INVESTOR"})
+    assert "Invalid mule_account_tier" in str(exc.value)
+
+
+def test_validation_numeric_range_rejections():
+    """Verifies numeric bounds: positive amount, non-negative delay, hour 0-23, day 0-6."""
+    base_kwargs = {
+        "crime_category": "INVESTMENT_FRAUD",
+        "reported_amount": 50000.0,
+        "payment_channel": "UPI",
+        "mule_bank_code": "BANK_SBI_SYNTH",
+        "mule_account_tier": "NEW_DIGITAL",
+        "mule_branch_zone": "ZONE_WEST",
+        "reporting_delay_mins": 30.0,
+        "incident_hour": 14,
+        "incident_day_of_week": 2,
+    }
+
+    # Zero amount
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "reported_amount": 0.0})
+    assert "greater than 0" in str(exc.value)
+
+    # Negative amount
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "reported_amount": -1500.0})
+    assert "greater than 0" in str(exc.value)
+
+    # Negative delay
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "reporting_delay_mins": -10.0})
+    assert "greater than or equal to 0" in str(exc.value) or "non-negative" in str(exc.value)
+
+    # Incident hour < 0
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "incident_hour": -1})
+    assert "greater than or equal to 0" in str(exc.value) or "between 0 and 23" in str(exc.value)
+
+    # Incident hour > 23
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "incident_hour": 24})
+    assert "less than or equal to 23" in str(exc.value) or "between 0 and 23" in str(exc.value)
+
+    # Incident day < 0
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "incident_day_of_week": -1})
+    assert "greater than or equal to 0" in str(exc.value) or "between 0 and 6" in str(exc.value)
+
+    # Incident day > 6
+    with pytest.raises(ValidationError) as exc:
+        PredictionRequest(**{**base_kwargs, "incident_day_of_week": 7})
+    assert "less than or equal to 6" in str(exc.value) or "between 0 and 6" in str(exc.value)
+
+
+def test_validation_missing_required_fields():
+    """Verifies that missing required fields trigger Pydantic ValidationError."""
+    with pytest.raises(ValidationError):
+        PredictionRequest(
+            reported_amount=50000.0,
+            payment_channel="UPI",
+        )
+
+
+def test_validation_exception_handler_sanitization():
+    """Verifies that FastAPI RequestValidationError handler produces clean human-readable JSON."""
+    raw_errors = [
+        {
+            "type": "value_error",
+            "loc": ("body", "reported_amount"),
+            "msg": "Value error, Reported loss amount must be greater than 0.",
+            "input": -500,
+        },
+        {
+            "type": "value_error",
+            "loc": ("body", "crime_category"),
+            "msg": "Value error, Invalid crime category 'UNKNOWN'. Must be one of ('INVESTMENT_FRAUD', ...)",
+            "input": "UNKNOWN",
+        },
+    ]
+    exc = RequestValidationError(raw_errors)
+    res = asyncio.run(validation_exception_handler(None, exc))
+
+    assert res.status_code == 422
+    body = json.loads(res.body.decode())
+    assert body["error"] == "Validation Error"
+    assert "reported_amount" in body["field_errors"]
+    assert "crime_category" in body["field_errors"]
+    assert not body["field_errors"]["reported_amount"].startswith("Value error, ")
+    assert "Reported loss amount must be greater than 0." in body["field_errors"]["reported_amount"]
+    assert "traceback" not in body
+    assert "sqlite" not in body["detail"].lower()
+
+
+def test_database_readiness_verification_behavior():
+    """Verifies that verify_database_readiness validates table presence."""
+    with get_db_connection() as conn:
+        ready, msg = verify_database_readiness(conn)
+        assert ready is True
+        assert msg == ""
+
+    # In-memory empty database
+    empty_conn = sqlite3.connect(":memory:")
+    try:
+        ready_empty, msg_empty = verify_database_readiness(empty_conn)
+        assert ready_empty is False
+        assert "missing required operational tables" in msg_empty.lower()
+        assert "atm_locations" in msg_empty
+    finally:
+        empty_conn.close()
+
+
+def test_predict_database_unready_raises_503():
+    """Verifies that predict_cashout_location raises HTTP 503 if database dependencies are missing."""
+    valid_req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=85000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=25.0,
+        incident_hour=15,
+        incident_day_of_week=4,
+    )
+
+    with patch("backend.app.main.verify_database_readiness", return_value=(False, "Missing required operational tables: atm_locations")):
+        with pytest.raises(HTTPException) as exc_info:
+            predict_cashout_location(valid_req)
+        assert exc_info.value.status_code == 503
+        assert "Missing required operational tables" in exc_info.value.detail
+
+
+def test_predict_model_unready_raises_503():
+    """Verifies that predict_cashout_location raises HTTP 503 if ML engine is not ready."""
+    valid_req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=85000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=25.0,
+        incident_hour=15,
+        incident_day_of_week=4,
+    )
+
+    with patch.object(ml_engine, "is_ready", return_value=False):
+        with pytest.raises(HTTPException) as exc_info:
+            predict_cashout_location(valid_req)
+        assert exc_info.value.status_code == 503
+        assert "Predictive analytics model engine is not ready" in exc_info.value.detail
+
+
+def test_generic_exception_handler_sanitizes_internal_errors():
+    """Verifies that internal exceptions do not leak SQLite errors or stack traces to clients."""
+    sqlite_err = sqlite3.OperationalError("near 'WHERE': syntax error in SELECT * FROM complaints")
+    res = asyncio.run(generic_exception_handler(None, sqlite_err))
+
+    assert res.status_code == 500
+    body = json.loads(res.body.decode())
+    assert body["error"] == "Internal Server Error"
+    assert "sqlite" not in body["detail"].lower()
+    assert "syntax error" not in body["detail"].lower()
+    assert "complaints" not in body["detail"].lower()
+    assert "traceback" not in body
+
 
 

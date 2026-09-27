@@ -16,8 +16,19 @@ async function request(endpoint, options = {}) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const msg = errorData.detail || `Request failed with status ${response.status}`;
-      throw new Error(msg);
+      let msg = errorData.detail;
+      if (typeof msg !== "string") {
+        if (Array.isArray(errorData.errors)) {
+          msg = errorData.errors.map(e => `${e.loc ? e.loc.slice(-1)[0] : "field"}: ${e.msg}`).join("; ");
+        } else {
+          msg = `Request failed with status ${response.status}`;
+        }
+      }
+      const err = new Error(msg);
+      err.status = response.status;
+      err.errorData = errorData;
+      err.fieldErrors = errorData.field_errors || {};
+      throw err;
     }
 
     return await response.json();

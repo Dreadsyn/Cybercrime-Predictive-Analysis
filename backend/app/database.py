@@ -41,6 +41,26 @@ def get_db_connection():
         conn.close()
 
 
+REQUIRED_OPERATIONAL_TABLES = {"atm_locations", "complaints", "cash_out_events", "predictions"}
+
+
+def verify_database_readiness(conn) -> tuple[bool, str]:
+    """
+    Verifies that the SQLite database is initialized and contains all required operational tables.
+    Returns (is_ready, error_message).
+    """
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        existing_tables = {row[0] for row in cur.fetchall()}
+        missing = REQUIRED_OPERATIONAL_TABLES - existing_tables
+        if missing:
+            return False, f"Database service is uninitialized or missing required operational tables: {', '.join(sorted(missing))}."
+        return True, ""
+    except Exception:
+        return False, "Database connection error or uninitialized database file."
+
+
 def ensure_db_schema():
     """Ensures newly added columns exist in predictions table for backwards compatibility."""
     if not DB_PATH.exists():

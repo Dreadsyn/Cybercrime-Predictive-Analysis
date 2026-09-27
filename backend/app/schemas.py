@@ -10,7 +10,14 @@ Enforces schema contracts for:
 """
 
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Allowed operational categorical domains
+VALID_CRIME_CATEGORIES = ("EXTORTION", "INVESTMENT_FRAUD", "LOAN_SCAM", "PHISHING_UPI", "TASK_FRAUD")
+VALID_PAYMENT_CHANNELS = ("IMPS", "NEFT", "UPI")
+VALID_MULE_BANKS = ("BANK_AXIS_SYNTH", "BANK_HDFC_SYNTH", "BANK_ICIC_SYNTH", "BANK_PNB_SYNTH", "BANK_SBI_SYNTH")
+VALID_ACCOUNT_TIERS = ("NEW_DIGITAL", "RURAL_REGIONAL", "STANDARD")
+VALID_BRANCH_ZONES = ("ZONE_CENTRAL", "ZONE_EAST", "ZONE_NORTH", "ZONE_SOUTH", "ZONE_WEST")
 
 
 # ==============================================================================
@@ -29,6 +36,84 @@ class ComplaintCreate(BaseModel):
     complaint_timestamp: Optional[str] = Field(None, json_schema_extra={"example": "2026-09-26 15:30:00"})
     incident_timestamp: Optional[str] = Field(None, json_schema_extra={"example": "2026-09-26 14:55:00"})
     complaint_id: Optional[str] = None
+
+    @field_validator("crime_category")
+    @classmethod
+    def validate_crime_category(cls, v: str) -> str:
+        if not v or not isinstance(v, str) or v.strip() == "":
+            raise ValueError("crime_category is required.")
+        val = v.strip().upper()
+        if val not in VALID_CRIME_CATEGORIES:
+            raise ValueError(f"Invalid crime_category '{v}'. Allowed: {', '.join(VALID_CRIME_CATEGORIES)}")
+        return val
+
+    @field_validator("payment_channel")
+    @classmethod
+    def validate_payment_channel(cls, v: str) -> str:
+        if not v or not isinstance(v, str) or v.strip() == "":
+            raise ValueError("payment_channel is required.")
+        val = v.strip().upper()
+        if val not in VALID_PAYMENT_CHANNELS:
+            raise ValueError(f"Invalid payment_channel '{v}'. Allowed: {', '.join(VALID_PAYMENT_CHANNELS)}")
+        return val
+
+    @field_validator("mule_bank_code")
+    @classmethod
+    def validate_mule_bank_code(cls, v: str) -> str:
+        if not v or not isinstance(v, str) or v.strip() == "":
+            raise ValueError("mule_bank_code is required.")
+        val = v.strip().upper()
+        if val not in VALID_MULE_BANKS:
+            raise ValueError(f"Invalid mule_bank_code '{v}'. Allowed: {', '.join(VALID_MULE_BANKS)}")
+        return val
+
+    @field_validator("mule_account_tier")
+    @classmethod
+    def validate_mule_account_tier(cls, v: str) -> str:
+        if not v or not isinstance(v, str) or v.strip() == "":
+            raise ValueError("mule_account_tier is required.")
+        val = v.strip().upper()
+        if val not in VALID_ACCOUNT_TIERS:
+            raise ValueError(f"Invalid mule_account_tier '{v}'. Allowed: {', '.join(VALID_ACCOUNT_TIERS)}")
+        return val
+
+    @field_validator("mule_branch_zone")
+    @classmethod
+    def validate_mule_branch_zone(cls, v: str) -> str:
+        if not v or not isinstance(v, str) or v.strip() == "":
+            raise ValueError("mule_branch_zone is required.")
+        val = v.strip().upper()
+        if val not in VALID_BRANCH_ZONES:
+            raise ValueError(f"Invalid mule_branch_zone '{v}'. Allowed: {', '.join(VALID_BRANCH_ZONES)}")
+        return val
+
+    @field_validator("reported_amount")
+    @classmethod
+    def validate_reported_amount(cls, v: float) -> float:
+        if v is None or v <= 0:
+            raise ValueError("reported_amount must be greater than 0.")
+        return float(v)
+
+    @field_validator("reporting_delay_mins")
+    @classmethod
+    def validate_reporting_delay_mins(cls, v: float) -> float:
+        if v is None or v < 0:
+            raise ValueError("reporting_delay_mins must be 0 or greater.")
+        return float(v)
+
+    @field_validator("incident_hour")
+    @classmethod
+    def validate_incident_hour(cls, v: int) -> int:
+        if v is None or not (0 <= v <= 23):
+            raise ValueError("incident_hour must be an integer between 0 and 23.")
+        return int(v)
+
+    @field_validator("incident_day_of_week")
+    @classmethod
+    def validate_incident_day_of_week(cls, v: int) -> int:
+        if v is None or not (0 <= v <= 6):
+            raise ValueError("incident_day_of_week must be an integer between 0 (Monday) and 6 (Sunday).")
+        return int(v)
 
 
 class ComplaintResponse(BaseModel):
@@ -74,6 +159,85 @@ class PredictionRequest(BaseModel):
     incident_day_of_week: int = Field(..., ge=0, le=6, json_schema_extra={"example": 4})
     complaint_timestamp: Optional[str] = Field(None, json_schema_extra={"example": "2026-09-26 14:55:00"})
     complaint_id: Optional[str] = Field(None, json_schema_extra={"example": "CMP-LIVE-001"})
+
+    @field_validator("crime_category")
+    @classmethod
+    def validate_crime_category(cls, v: str) -> str:
+        if not v or not isinstance(v, str) or v.strip() == "":
+            raise ValueError("crime_category is required.")
+        val = v.strip().upper()
+        if val not in VALID_CRIME_CATEGORIES:
+            raise ValueError(f"Invalid crime_category '{v}'. Allowed: {', '.join(VALID_CRIME_CATEGORIES)}")
+        return val
+
+    @field_validator("payment_channel")
+    @classmethod
+    def validate_payment_channel(cls, v: str) -> str:
+        if not v or not isinstance(v, str) or v.strip() == "":
+            raise ValueError("payment_channel is required.")
+        val = v.strip().upper()
+        if val not in VALID_PAYMENT_CHANNELS:
+            raise ValueError(f"Invalid payment_channel '{v}'. Allowed: {', '.join(VALID_PAYMENT_CHANNELS)}")
+        return val
+
+    @field_validator("mule_bank_code")
+    @classmethod
+    def validate_mule_bank_code(cls, v: str) -> str:
+        if not v or not isinstance(v, str) or v.strip() == "":
+            raise ValueError("mule_bank_code is required.")
+        val = v.strip().upper()
+        if val not in VALID_MULE_BANKS:
+            raise ValueError(f"Invalid mule_bank_code '{v}'. Allowed: {', '.join(VALID_MULE_BANKS)}")
+        return val
+
+    @field_validator("mule_account_tier")
+    @classmethod
+    def validate_mule_account_tier(cls, v: str) -> str:
+        if not v or not isinstance(v, str) or v.strip() == "":
+            raise ValueError("mule_account_tier is required.")
+        val = v.strip().upper()
+        if val not in VALID_ACCOUNT_TIERS:
+            raise ValueError(f"Invalid mule_account_tier '{v}'. Allowed: {', '.join(VALID_ACCOUNT_TIERS)}")
+        return val
+
+    @field_validator("mule_branch_zone")
+    @classmethod
+    def validate_mule_branch_zone(cls, v: str) -> str:
+        if not v or not isinstance(v, str) or v.strip() == "":
+            raise ValueError("mule_branch_zone is required.")
+        val = v.strip().upper()
+        if val not in VALID_BRANCH_ZONES:
+            raise ValueError(f"Invalid mule_branch_zone '{v}'. Allowed: {', '.join(VALID_BRANCH_ZONES)}")
+        return val
+
+    @field_validator("reported_amount")
+    @classmethod
+    def validate_reported_amount(cls, v: float) -> float:
+        if v is None or v <= 0:
+            raise ValueError("reported_amount must be greater than 0.")
+        return float(v)
+
+    @field_validator("reporting_delay_mins")
+    @classmethod
+    def validate_reporting_delay_mins(cls, v: float) -> float:
+        if v is None or v < 0:
+            raise ValueError("reporting_delay_mins must be 0 or greater.")
+        return float(v)
+
+    @field_validator("incident_hour")
+    @classmethod
+    def validate_incident_hour(cls, v: int) -> int:
+        if v is None or not (0 <= v <= 23):
+            raise ValueError("incident_hour must be an integer between 0 and 23.")
+        return int(v)
+
+    @field_validator("incident_day_of_week")
+    @classmethod
+    def validate_incident_day_of_week(cls, v: int) -> int:
+        if v is None or not (0 <= v <= 6):
+            raise ValueError("incident_day_of_week must be an integer between 0 (Monday) and 6 (Sunday).")
+        return int(v)
+
 
 
 class PlaybookAction(BaseModel):

@@ -202,6 +202,15 @@ class MLEngine:
 
         print("  [OK] ML artifacts loaded successfully.")
 
+    def is_ready(self) -> bool:
+        """Verifies that all Phase 2 frozen estimators and transformers are active in memory."""
+        return (
+            self.calibrated_clf is not None
+            and self.preprocessor is not None
+            and self.temporal_model is not None
+            and self.metadata is not None
+        )
+
     def get_atm_info(self, atm_id: str, db_conn) -> dict:
         """Retrieves static metadata for an ATM with memory caching."""
         if atm_id in self.atm_cache:
