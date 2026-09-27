@@ -380,3 +380,42 @@ class ClusterResponse(BaseModel):
     active_zone_filter: Optional[str] = None
     source_evaluated: str
     clusters: List[EmergingCluster]
+
+
+# ==============================================================================
+# 6. REPEATED ATM / ZONE CONVERGENCE SCHEMAS (FEATURE 2)
+# ==============================================================================
+class RepeatedConvergence(BaseModel):
+    convergence_id: str
+    convergence_type: str  # "ATM_CONVERGENCE" or "ZONE_CONVERGENCE"
+    target_id: str         # ATM ID or Zone ID
+    target_name: str       # Descriptive label
+    zone_id: str
+    total_matches: int
+    prediction_count: int
+    case_count: int
+    involved_atm_ids: List[str]
+    time_window_start: str
+    time_window_end: str
+    time_span_hours: float
+    convergence_score: int
+    severity_level: str    # "CRITICAL", "HIGH", "ELEVATED", "MODERATE"
+    supporting_prediction_ids: List[str]
+    supporting_case_ids: List[str]
+    reason: str
+    recommended_action: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
+class ConvergenceResponse(BaseModel):
+    total_convergences: int
+    atm_convergences_count: int
+    zone_convergences_count: int
+    window_hours: int
+    window_start: str
+    window_end: str
+    target_type: str
+    zone_filter: Optional[str] = None
+    convergences: List[RepeatedConvergence]
+

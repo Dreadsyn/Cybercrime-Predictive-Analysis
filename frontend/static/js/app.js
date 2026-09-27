@@ -56,6 +56,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupFormListeners();
   setupModalListeners();
   setupClusterListeners();
+  setupConvergenceListeners();
 
   // 3. Load Core Telemetry & Data
   await loadDashboardData();
@@ -95,6 +96,9 @@ async function loadDashboardData() {
 
     // Load Emerging Cash-Out Clusters
     await loadClusters();
+
+    // Load Repeated Spatial Convergences (Feature 2)
+    await loadConvergences();
 
     // Cache model info for audit modal
     window.modelInfoData = modelInfo;
@@ -325,6 +329,10 @@ function setupFormListeners() {
         const currentAlerts = parseInt(kpiAlerts.innerText.replace(/,/g, "") || "0", 10);
         kpiAlerts.innerText = (currentAlerts + 1).toLocaleString();
       }
+
+      // Refresh clusters & spatial convergences
+      loadClusters();
+      loadConvergences();
 
       showToast(`Forecast Generated: Target ${result.predicted_atm_id} (Priority: ${result.priority_level} · Score: ${result.priority_score}/100)`, "success");
     } catch (err) {
@@ -691,6 +699,117 @@ function renderClusters(data) {
     })
     .join("");
 }
+
+/**
+ * Configure repeated convergence toolbar listeners (Feature 2).
+ */
+function setupConvergenceListeners() {
+  const winSelect = document.getElementById("convWindowSelect");
+  const typeSelect = document.getElementById("convTypeSelect");
+  const minSelect = document.getElementById("convMinSelect");
+  const refreshBtn = document.getElementById("btnRefreshConvergences");
+
+  if (winSelect) winSelect.addEventListener("change", () => loadConvergences());
+  if (typeSelect) typeSelect.addEventListener("change", () => loadConvergences());
+  if (minSelect) minSelect.addEventListener("change", () => loadConvergences());
+  if (refreshBtn) refreshBtn.addEventListener("click", () => loadConvergences());
+}
+
+/**
+ * Fetch and refresh repeated spatial convergences from backend API.
+ */
+async function loadConvergences() {
+  const winSelect = document.getElementById("convWindowSelect");
+  const typeSelect = document.getElementById("convTypeSelect");
+  const minSelect = document.getElementById("convMinSelect");
+
+  const windowHours = winSelect ? parseInt(winSelect.value, 10) : 48;
+  const targetType = typeSelect ? typeSelect.value : "all";
+  const minMatches = minSelect ? parseInt(minSelect.value, 10) : 2;
+
+  const summaryEl = document.getElementById("convergenceStatusSummary");
+  if (summaryEl) summaryEl.innerText = `Scanning rolling ${windowHours}h window for repeated ATM and zone convergence...`;
+
+  try {
+    const data = await API.getConvergences({
+      window_hours: windowHours,
+      target_type: targetType,
+      min_matches: minMatches,
+    });
+    renderConvergences(data);
+    window.lastConvergencesData = data;
+  } catch (err) {
+    if (summaryEl) summaryEl.innerText = `Convergence detection error: ${err.message}`;
+  }
+}
+
+/**
+ * Render repeated spatial convergences into table and update badge count.
+ */
+function renderConvergences(data) {
+  const badge = document.getElementById("convergenceBadgeCount");
+  const summaryEl = document.getElementById("convergenceStatusSummary");
+  const tbody = document.getElementById("convergenceTableBody");
+  if (!tbody) return;
+
+  const total = data.total_convergences || (data.convergences ? data.convergences.length : 0);
+  if (badge) badge.innerText = total;
+
+  if (summaryEl) {
+    summaryEl.innerText = `Detected ${total} convergence pattern${total === 1 ? "" : "s"} (${data.atm_convergences_count || 0} ATM, ${data.zone_convergences_count || 0} Zone) across rolling ${data.window_hours || 48}h window (${data.window_start || ""} to ${data.window_end || ""}).`;
+  }
+
+  if (!data.convergences || data.convergences.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-dim); padding: 16px;">No repeated ATM or zone convergence detected in the selected time window.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.convergences
+    .map(c => {
+      const isAtm = c.convergence_type === "ATM_CONVERGENCE";
+      const typeLabel = isAtm ? "Same ATM" : "Zone Corridor";
+      const typeClass = isAtm ? "conv-type-atm" : "conv-type-zone";
+      const sevClass = `priority-${(c.severity_level || "low").toLowerCase()}`;
+      const atmsList = c.involved_atm_ids && c.involved_atm_ids.length > 0 ? c.involved_atm_ids.join(", ") : c.target_id;
+      const targetDisplay = isAtm
+        ? `<b>${c.target_id}</b> <small style="color: var(--text-muted);">(${c.zone_id.replace("ZONE_", "")})</small>`
+        : `<b>${c.target_name}</b>`;
+
+      return `
+      <tr>
+        <td><span class="cluster-id-badge">${c.convergence_id}</span></td>
+        <td><span class="${typeClass}">${typeLabel}</span></td>
+        <td>${targetDisplay}</td>
+        <td><span class="priority-tag ${sevClass}">${c.severity_level}</span></td>
+        <td><span class="cluster-score-pill">${c.convergence_score}/100</span></td>
+        <td>
+          <b>${c.total_matches}</b> <small style="color: var(--text-muted);">(Alerts:${c.prediction_count}, Cases:${c.case_count})</small>
+        </td>
+        <td><small style="color: var(--text-muted); font-family: monospace;">${atmsList}</small></td>
+        <td><small style="color: var(--text-muted); font-family: monospace;">${c.time_span_hours}h span</small></td>
+        <td style="max-width: 280px;">
+          <small style="color: var(--text-main); font-weight: 500; display: block; line-height: 1.3; margin-bottom: 2px;">${escapeHtml(c.reason)}</small>
+          <small style="color: var(--accent-teal); font-weight: 600; display: block; line-height: 1.25;">${escapeHtml(c.recommended_action)}</small>
+        </td>
+        <td>
+          ${c.latitude && c.longitude ? `
+            <button type="button" class="btn-conv-focus" onclick="window.focusMapCoordinates(${c.latitude}, ${c.longitude}, '${escapeHtml(c.target_id)}')">
+              Map Pin
+            </button>
+          ` : "--"}
+        </td>
+      </tr>
+      `;
+    })
+    .join("");
+}
+
+window.focusMapCoordinates = (lat, lon, targetId) => {
+  if (MapController && typeof MapController.focusLocation === "function") {
+    MapController.focusLocation(lat, lon, 15);
+  }
+  showToast(`Focused map on ${targetId}`, "info");
+};
 
 /**
  * Map explanation codes to human-readable intelligence descriptors.

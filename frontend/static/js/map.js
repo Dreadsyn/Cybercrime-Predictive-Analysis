@@ -171,6 +171,17 @@ export const MapController = {
         advisoryEl.style.borderLeftColor = "var(--accent-teal)";
         advisoryEl.style.backgroundColor = "#ffffff";
       }
+
+      // Contextual check for active repeated convergence on this ATM or zone
+      if (window.lastConvergencesData && Array.isArray(window.lastConvergencesData.convergences)) {
+        const atmConv = window.lastConvergencesData.convergences.find(c => c.convergence_type === "ATM_CONVERGENCE" && c.target_id === atm.atm_id);
+        const zoneConv = window.lastConvergencesData.convergences.find(c => c.convergence_type === "ZONE_CONVERGENCE" && c.zone_id === atm.zone_id);
+        if (atmConv) {
+          advisoryEl.innerHTML += `<div class="conv-advisory-banner">&#9888; <b>Repeated Target Convergence:</b> ${atmConv.total_matches} incidents (${atmConv.prediction_count} alerts) converged on this ATM in past ${atmConv.time_span_hours}h (Score: ${atmConv.convergence_score}/100, ${atmConv.severity_level}).</div>`;
+        } else if (zoneConv) {
+          advisoryEl.innerHTML += `<div class="conv-advisory-banner">&#9888; <b>Regional Corridor Convergence:</b> Active zone convergence in ${atm.zone_id ? atm.zone_id.replace("ZONE_", "Zone ") : "this zone"} across ${zoneConv.involved_atm_ids.length} ATMs (${zoneConv.total_matches} incidents).</div>`;
+        }
+      }
     }
 
     // Sync dropdown if exists
@@ -290,5 +301,19 @@ export const MapController = {
 
     // Automatically populate Selected Location panel with target telemetry
     this.selectATM(target.data, true);
+  },
+
+  focusLocation(lat, lon, zoom = 14) {
+    if (mapInstance && lat && lon) {
+      mapInstance.flyTo([lat, lon], zoom, { duration: 0.8 });
+    }
+  },
+
+  selectAtmById(atmId) {
+    const item = atmMarkers[atmId];
+    if (item) {
+      this.selectATM(item.data, true);
+      mapInstance.flyTo([item.data.latitude, item.data.longitude], 15, { duration: 0.8 });
+    }
   },
 };

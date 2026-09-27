@@ -91,5 +91,17 @@ export const API = {
     const qs = q.toString();
     return await request(`/analytics/clusters${qs ? `?${qs}` : ""}`);
   },
+
+  // 9. Repeated ATM / Zone Convergence Detection (Feature 2)
+  async getConvergences(params = {}) {
+    const q = new URLSearchParams();
+    if (params.window_hours) q.append("window_hours", params.window_hours);
+    if (params.min_matches) q.append("min_matches", params.min_matches);
+    if (params.target_type) q.append("target_type", params.target_type);
+    if (params.zone) q.append("zone", params.zone);
+    if (params.reference_timestamp) q.append("reference_timestamp", params.reference_timestamp);
+    const qs = q.toString();
+    return await request(`/analytics/convergences${qs ? `?${qs}` : ""}`);
+  },
 };
 

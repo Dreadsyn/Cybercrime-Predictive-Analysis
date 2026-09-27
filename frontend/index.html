@@ -436,6 +436,7 @@
       <button type="button" class="tab-btn active" data-tab="tab-analytics">Historical Analytics</button>
       <button type="button" class="tab-btn" data-tab="tab-dispatch">Recent Dispatch Log</button>
       <button type="button" class="tab-btn" data-tab="tab-clusters">Emerging Cash-Out Clusters <span id="clusterBadgeCount" class="tab-counter-badge">0</span></button>
+      <button type="button" class="tab-btn" data-tab="tab-convergences">Repeated Convergence <span id="convergenceBadgeCount" class="tab-counter-badge">0</span></button>
     </div>
 
     <!-- Tab 1: Historical Analytics Charts -->
@@ -521,6 +522,59 @@
             </tr>
           </thead>
           <tbody id="clusterTableBody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab 4: Repeated ATM / Zone Convergence (Feature 2) -->
+    <div id="tab-convergences" class="tab-pane">
+      <div class="cluster-toolbar">
+        <div class="cluster-summary-text">
+          <span id="convergenceStatusSummary">Analyzing spatial convergence across ATM network and jurisdiction corridors...</span>
+        </div>
+        <div class="cluster-filters-row">
+          <label for="convWindowSelect" style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">Rolling Window:</label>
+          <select id="convWindowSelect" class="mini-select">
+            <option value="12">12 Hours</option>
+            <option value="24">24 Hours</option>
+            <option value="48" selected>48 Hours</option>
+            <option value="72">72 Hours</option>
+            <option value="168">7 Days</option>
+          </select>
+          <label for="convTypeSelect" style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600; margin-left: 4px;">Target Type:</label>
+          <select id="convTypeSelect" class="mini-select">
+            <option value="all" selected>All (ATM + Zone)</option>
+            <option value="atm">Same ATM Only</option>
+            <option value="zone">Same Zone Only</option>
+          </select>
+          <label for="convMinSelect" style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600; margin-left: 4px;">Min Matches:</label>
+          <select id="convMinSelect" class="mini-select">
+            <option value="2" selected>2+ Incidents</option>
+            <option value="3">3+ Incidents</option>
+            <option value="5">5+ Incidents</option>
+          </select>
+          <button type="button" id="btnRefreshConvergences" class="btn-zone-filter" style="margin-left: 4px;">Refresh</button>
+        </div>
+      </div>
+      <div class="candidate-table-wrap" style="max-height: 280px; overflow-y: auto;">
+        <table class="mini-table">
+          <thead>
+            <tr>
+              <th>Convergence ID</th>
+              <th>Pattern Type</th>
+              <th>Target Name</th>
+              <th>Severity</th>
+              <th>Score</th>
+              <th>Incidents</th>
+              <th>Involved ATMs</th>
+              <th>Window Span</th>
+              <th>Convergence Rationale &amp; Evidence</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="convergenceTableBody">
             <!-- Dynamically populated -->
           </tbody>
         </table>

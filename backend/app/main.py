@@ -34,6 +34,7 @@ sys.path.insert(0, str(BASE_DIR))
 
 # Database and Schemas
 from backend.app.cluster_engine import detect_emerging_clusters
+from backend.app.convergence_engine import detect_repeated_convergence
 from backend.app.database import get_db_connection, verify_database_readiness
 from backend.app.ml_engine import ml_engine
 from backend.app.playbook_engine import generate_investigator_playbook
@@ -41,12 +42,14 @@ from backend.app.schemas import (
     ATMLocationResponse,
     ClusterResponse,
     ComplaintResponse,
+    ConvergenceResponse,
     HotspotZone,
     InvestigatorPlaybook,
     ModelInfoResponse,
     PlaybookRequest,
     PredictionRequest,
     PredictionResponse,
+    RepeatedConvergence,
     StatsResponse,
 )
 
@@ -321,6 +324,46 @@ def get_emerging_clusters(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cluster detection failed: {str(e)}")
+
+
+@app.get("/api/analytics/convergences", response_model=ConvergenceResponse, tags=["Analytics"])
+def get_repeated_convergences(
+    window_hours: int = Query(48, ge=1, le=168, description="Rolling time window length in hours"),
+    min_matches: int = Query(2, ge=2, le=50, description="Minimum events or predictions required to trigger convergence"),
+    target_type: str = Query("all", description="Target type filter: 'all', 'atm', or 'zone'"),
+    zone: Optional[str] = Query(None, description="Optional zone filter, e.g. ZONE_WEST"),
+    reference_timestamp: Optional[str] = Query(None, description="Optional custom reference end timestamp (YYYY-MM-DD HH:MM:SS)"),
+):
+    """
+    Detects repeated spatial convergence where multiple recent cases or predictions
+    point toward the same ATM kiosk or concentrate within the same administrative zone.
+    """
+    try:
+        actual_window = window_hours if isinstance(window_hours, int) else getattr(window_hours, "default", 48)
+        actual_min = min_matches if isinstance(min_matches, int) else getattr(min_matches, "default", 2)
+        actual_type = target_type if isinstance(target_type, str) else getattr(target_type, "default", "all")
+        if not isinstance(actual_type, str):
+            actual_type = "all"
+        actual_zone = zone if isinstance(zone, str) else getattr(zone, "default", None)
+        if not isinstance(actual_zone, str):
+            actual_zone = None
+        actual_ref = reference_timestamp if isinstance(reference_timestamp, str) else getattr(reference_timestamp, "default", None)
+        if not isinstance(actual_ref, str):
+            actual_ref = None
+
+        with get_db_connection() as conn:
+            result = detect_repeated_convergence(
+                db_conn=conn,
+                window_hours=actual_window,
+                min_matches=actual_min,
+                target_type=actual_type,
+                zone=actual_zone,
+                reference_timestamp=actual_ref,
+            )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Convergence detection failed: {str(e)}")
+
 
 
 @app.post("/api/predict", response_model=PredictionResponse, status_code=status.HTTP_200_OK, tags=["Predictive Analytics"])

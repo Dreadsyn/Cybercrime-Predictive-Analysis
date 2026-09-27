@@ -33,6 +33,7 @@ from backend.app.main import (
     get_dashboard_stats,
     get_emerging_clusters,
     get_model_information,
+    get_repeated_convergences,
     get_zone_hotspots,
     health_check,
     list_atms,
@@ -44,6 +45,11 @@ from backend.app.main import (
     validation_exception_handler,
 )
 from backend.app.cluster_engine import detect_emerging_clusters
+from backend.app.convergence_engine import (
+    compute_atm_convergence_score,
+    compute_zone_convergence_score,
+    detect_repeated_convergence,
+)
 from backend.app.database import get_db_connection, verify_database_readiness
 from backend.app.ml_engine import compute_intervention_priority
 from backend.app.playbook_engine import generate_investigator_playbook
@@ -624,6 +630,157 @@ def test_generic_exception_handler_sanitizes_internal_errors():
     assert "syntax error" not in body["detail"].lower()
     assert "complaints" not in body["detail"].lower()
     assert "traceback" not in body
+
+
+# ==============================================================================
+# FEATURE 2: REPEATED ATM & ZONE CONVERGENCE TESTS
+# ==============================================================================
+
+def test_get_repeated_convergences_endpoint():
+    """Verifies that /api/analytics/convergences returns valid convergence intelligence."""
+    response = get_repeated_convergences(window_hours=48, min_matches=2, target_type="all")
+    assert "total_convergences" in response
+    assert response["total_convergences"] >= 1
+    assert "atm_convergences_count" in response
+    assert "zone_convergences_count" in response
+    assert response["atm_convergences_count"] >= 1
+    assert response["zone_convergences_count"] >= 1
+    assert response["total_convergences"] == response["atm_convergences_count"] + response["zone_convergences_count"]
+    assert "convergences" in response
+    assert isinstance(response["convergences"], list)
+    assert len(response["convergences"]) == response["total_convergences"]
+
+    first = response["convergences"][0]
+    assert first["convergence_id"].startswith("CONV-")
+    assert first["convergence_type"] in {"ATM_CONVERGENCE", "ZONE_CONVERGENCE"}
+    assert "target_id" in first
+    assert "target_name" in first
+    assert first["zone_id"] in {"ZONE_CENTRAL", "ZONE_NORTH", "ZONE_SOUTH", "ZONE_EAST", "ZONE_WEST"}
+    assert first["total_matches"] >= 2
+    assert first["prediction_count"] >= 0
+    assert first["case_count"] >= 0
+    assert len(first["involved_atm_ids"]) >= 1
+    assert 0 <= first["convergence_score"] <= 100
+    assert first["severity_level"] in {"CRITICAL", "HIGH", "ELEVATED", "MODERATE"}
+    assert len(first["reason"]) > 10
+    assert len(first["recommended_action"]) > 10
+    assert "time_window_start" in first
+    assert "time_window_end" in first
+    assert first["time_span_hours"] >= 0.0
+    assert isinstance(first["supporting_prediction_ids"], list)
+    assert isinstance(first["supporting_case_ids"], list)
+
+
+def test_repeated_convergences_target_type_filters():
+    """Verifies target_type filters: 'atm', 'zone', and 'all'."""
+    # ATM-only filter
+    atm_res = get_repeated_convergences(window_hours=48, min_matches=2, target_type="atm")
+    assert atm_res["target_type"] == "atm"
+    assert atm_res["zone_convergences_count"] == 0
+    assert atm_res["total_convergences"] == atm_res["atm_convergences_count"]
+    for c in atm_res["convergences"]:
+        assert c["convergence_type"] == "ATM_CONVERGENCE"
+        assert c["target_id"].startswith("ATM-")
+
+    # Zone-only filter
+    zone_res = get_repeated_convergences(window_hours=48, min_matches=2, target_type="zone")
+    assert zone_res["target_type"] == "zone"
+    assert zone_res["atm_convergences_count"] == 0
+    assert zone_res["total_convergences"] == zone_res["zone_convergences_count"]
+    for c in zone_res["convergences"]:
+        assert c["convergence_type"] == "ZONE_CONVERGENCE"
+        assert c["target_id"].startswith("ZONE_")
+
+
+def test_repeated_convergences_zone_filter():
+    """Verifies filtering by specific geographic zone."""
+    west_res = get_repeated_convergences(window_hours=48, min_matches=2, zone="ZONE_WEST")
+    assert west_res["zone_filter"] == "ZONE_WEST"
+    for c in west_res["convergences"]:
+        assert c["zone_id"] == "ZONE_WEST"
+
+
+def test_repeated_convergences_threshold_and_empty_handling():
+    """Verifies graceful handling of restrictive thresholds and empty result sets."""
+    # Impossibly high match count
+    empty_res = get_repeated_convergences(window_hours=48, min_matches=500)
+    assert empty_res["total_convergences"] == 0
+    assert empty_res["atm_convergences_count"] == 0
+    assert empty_res["zone_convergences_count"] == 0
+    assert empty_res["convergences"] == []
+
+    # Non-existent zone
+    empty_zone = get_repeated_convergences(window_hours=48, min_matches=2, zone="ZONE_NON_EXISTENT")
+    assert empty_zone["total_convergences"] == 0
+    assert empty_zone["convergences"] == []
+
+
+def test_convergence_detection_deterministic_logic():
+    """Verifies that detect_repeated_convergence is 100% deterministic and reproducible."""
+    with get_db_connection() as conn:
+        run1 = detect_repeated_convergence(conn, window_hours=48, min_matches=2, target_type="all")
+        run2 = detect_repeated_convergence(conn, window_hours=48, min_matches=2, target_type="all")
+
+    assert run1["total_convergences"] == run2["total_convergences"]
+    assert run1["atm_convergences_count"] == run2["atm_convergences_count"]
+    assert run1["zone_convergences_count"] == run2["zone_convergences_count"]
+    assert len(run1["convergences"]) == len(run2["convergences"])
+    for c1, c2 in zip(run1["convergences"], run2["convergences"]):
+        assert c1["convergence_id"] == c2["convergence_id"]
+        assert c1["target_id"] == c2["target_id"]
+        assert c1["convergence_type"] == c2["convergence_type"]
+        assert c1["convergence_score"] == c2["convergence_score"]
+        assert c1["severity_level"] == c2["severity_level"]
+        assert c1["reason"] == c2["reason"]
+        assert c1["recommended_action"] == c2["recommended_action"]
+
+
+def test_convergence_score_helpers_bounds():
+    """Verifies that convergence scoring helpers stay strictly within [0, 100] across extremes."""
+    # Extreme high ATM case
+    score_hi, sev_hi = compute_atm_convergence_score(
+        total_matches=20,
+        time_span_hours=1.0,
+        avg_priority=95.0,
+        has_ground_truth_cashout=True,
+    )
+    assert 0 <= score_hi <= 100
+    assert score_hi >= 80
+    assert sev_hi == "CRITICAL"
+
+    # Extreme low ATM case
+    score_lo, sev_lo = compute_atm_convergence_score(
+        total_matches=1,
+        time_span_hours=100.0,
+        avg_priority=15.0,
+        has_ground_truth_cashout=False,
+    )
+    assert 0 <= score_lo <= 100
+    assert score_lo < 35
+    assert sev_lo == "MODERATE"
+
+    # Extreme high Zone case
+    z_score_hi, z_sev_hi = compute_zone_convergence_score(
+        total_matches=30,
+        distinct_atms_count=5,
+        time_span_hours=2.0,
+        avg_priority=90.0,
+    )
+    assert 0 <= z_score_hi <= 100
+    assert z_score_hi >= 80
+    assert z_sev_hi == "CRITICAL"
+
+    # Extreme low Zone case
+    z_score_lo, z_sev_lo = compute_zone_convergence_score(
+        total_matches=1,
+        distinct_atms_count=1,
+        time_span_hours=200.0,
+        avg_priority=10.0,
+    )
+    assert 0 <= z_score_lo <= 100
+    assert z_score_lo < 35
+    assert z_sev_lo == "MODERATE"
+
 
 
 
