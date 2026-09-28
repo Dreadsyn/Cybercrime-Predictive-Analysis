@@ -29,9 +29,12 @@ sys.path.insert(0, str(BASE_DIR))
 
 from backend.app.main import (
     app,
+    dispatch_patrol_endpoint,
+    export_case_evidence_endpoint,
     generate_playbook_endpoint,
     generic_exception_handler,
     get_case_details,
+    get_case_dispatch_endpoint,
     get_dashboard_stats,
     get_emerging_clusters,
     get_model_information,
@@ -41,6 +44,7 @@ from backend.app.main import (
     list_atms,
     list_cases,
     list_complaints,
+    list_dispatches_endpoint,
     list_predictions,
     ml_engine,
     predict_cashout_location,
@@ -61,6 +65,14 @@ from backend.app.case_engine import (
     list_operational_cases,
     transition_case_status,
 )
+from backend.app.dispatch_engine import (
+    compile_case_evidence_packet,
+    create_or_get_patrol_dispatch,
+    export_case_evidence_csv,
+    generate_dispatch_id,
+    get_dispatch_by_case_id,
+    list_patrol_dispatches,
+)
 from backend.app.cluster_engine import detect_emerging_clusters
 from backend.app.convergence_engine import (
     compute_atm_convergence_score,
@@ -73,6 +85,8 @@ from backend.app.playbook_engine import generate_investigator_playbook
 from backend.app.schemas import (
     CaseStatusUpdateRequest,
     ComplaintCreate,
+    DispatchCreateRequest,
+    DispatchResponse,
     PlaybookRequest,
     PredictionRequest,
 )
@@ -810,7 +824,8 @@ def test_convergence_score_helpers_bounds():
 
 @pytest.fixture(autouse=True)
 def clean_alert_test_predictions():
-    """Cleans up isolated test prediction and case records before and after each test."""
+    """Cleans up isolated test prediction, dispatch, and case records before and after each test."""
+    clean_dispatches_sql = "DELETE FROM patrol_dispatches;"
     clean_cases_sql = """
         DELETE FROM operational_cases 
         WHERE parent_alert_id IN (
@@ -824,10 +839,12 @@ def clean_alert_test_predictions():
         WHERE complaint_id != 'CMP-INIT-001';
     """
     with get_db_connection() as conn:
+        conn.execute(clean_dispatches_sql)
         conn.execute(clean_cases_sql)
         conn.execute(clean_sql)
     yield
     with get_db_connection() as conn:
+        conn.execute(clean_dispatches_sql)
         conn.execute(clean_cases_sql)
         conn.execute(clean_sql)
 
@@ -1646,6 +1663,287 @@ def test_get_case_and_list_cases_endpoints():
     with pytest.raises(HTTPException) as exc_info:
         get_case_details("CASE-00000000-NONEXIST")
     assert exc_info.value.status_code == 404
+
+
+# ==============================================================================
+# 12. FIELD PATROL DISPATCH ROUTING & EVIDENCE EXPORT TESTS
+# ==============================================================================
+
+def test_patrol_dispatch_creation_and_fields():
+    """
+    Verifies that POST /api/cases/{case_id}/dispatch generates a valid,
+    persisted dispatch record with structured routing fields.
+    """
+    # 1. Create a prediction and case
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=85000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=25.0,
+        incident_hour=15,
+        incident_day_of_week=4,
+        complaint_id="CMP-TEST-DISP-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res.get("case_id")
+    assert case_id is not None
+    assert case_id.startswith("CASE-")
+
+    # 2. Dispatch patrol
+    disp_req = DispatchCreateRequest(
+        patrol_unit="PCR-WEST-09",
+        notes="High-velocity cashout target. Intercept perimeter.",
+        auto_advance_case=True,
+    )
+    disp = dispatch_patrol_endpoint(case_id=case_id, request=disp_req)
+
+    # 3. Assert structured dispatch fields
+    assert disp["dispatch_id"].startswith("DISP-")
+    assert disp["case_id"] == case_id
+    assert disp["target_atm_id"] == pred_res["predicted_atm_id"]
+    assert disp["zone_id"] == pred_res["predicted_zone_id"]
+    assert disp["priority_score"] == pred_res["priority_score"]
+    assert disp["priority_level"] == pred_res["priority_level"]
+    assert disp["patrol_unit_assigned"] == "PCR-WEST-09"
+    assert disp["dispatch_status"] == "DISPATCHED"
+    assert disp["dispatched_timestamp"] is not None
+    assert "PCR-WEST-09" in disp["tactical_brief"] or "Target ATM" in disp["tactical_brief"] or "DISPATCH BRIEF" in disp["tactical_brief"]
+    assert isinstance(disp["playbook_actions"], list)
+
+
+def test_patrol_dispatch_auto_advance_case_lifecycle():
+    """
+    Verifies that dispatching a patrol on a NEW_ALERT case automatically
+    advances the underlying operational case lifecycle to PATROL_DISPATCHED.
+    """
+    req = PredictionRequest(
+        crime_category="PHISHING_UPI",
+        reported_amount=45000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_HDFC_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_NORTH",
+        reporting_delay_mins=15.0,
+        incident_hour=18,
+        incident_day_of_week=5,
+        complaint_id="CMP-TEST-DISP-ADV-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    # Verify initial case status
+    initial_case = get_case_details(case_id)
+    assert initial_case["case_status"] == "NEW_ALERT"
+
+    # Dispatch patrol with auto_advance_case=True
+    dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-NORTH-03", notes="Auto advance test"),
+    )
+
+    # Verify case status transitioned to PATROL_DISPATCHED
+    updated_case = get_case_details(case_id)
+    assert updated_case["case_status"] == "PATROL_DISPATCHED"
+    assert "PCR-NORTH-03" in updated_case["notes"] or "dispatched" in updated_case["notes"].lower()
+
+
+def test_get_case_dispatch_and_list_dispatches_endpoints():
+    """
+    Verifies GET /api/cases/{case_id}/dispatch and GET /api/dispatches endpoints.
+    """
+    req = PredictionRequest(
+        crime_category="LOAN_SCAM",
+        reported_amount=30000.0,
+        payment_channel="IMPS",
+        mule_bank_code="BANK_PNB_SYNTH",
+        mule_account_tier="STANDARD",
+        mule_branch_zone="ZONE_CENTRAL",
+        reporting_delay_mins=40.0,
+        incident_hour=11,
+        incident_day_of_week=2,
+        complaint_id="CMP-TEST-DISP-READ-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-CENTRAL-02"),
+    )
+
+    # 1. Fetch dispatch by case ID
+    disp = get_case_dispatch_endpoint(case_id)
+    assert disp["case_id"] == case_id
+    assert disp["patrol_unit_assigned"] == "PCR-CENTRAL-02"
+    assert disp["dispatch_status"] == "DISPATCHED"
+
+    # 2. List dispatches
+    all_disp = list_dispatches_endpoint(limit=10)
+    assert isinstance(all_disp, list)
+    assert len(all_disp) > 0
+    found = [d for d in all_disp if d["case_id"] == case_id]
+    assert len(found) == 1
+
+    # 3. 404 for non-existent case dispatch
+    with pytest.raises(HTTPException) as exc_info:
+        get_case_dispatch_endpoint("CASE-00000000-NONEXIST")
+    assert exc_info.value.status_code == 404
+
+
+def test_patrol_dispatch_default_unit_fallback():
+    """
+    Verifies that if patrol_unit callsign is not provided, the system assigns
+    a deterministic zone-based callsign (PCR-{ZONE}-01).
+    """
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=50000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_EAST",
+        reporting_delay_mins=30.0,
+        incident_hour=16,
+        incident_day_of_week=3,
+        complaint_id="CMP-TEST-DISP-DEF-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    # Dispatch without explicit unit
+    disp = dispatch_patrol_endpoint(case_id=case_id, request=None)
+    assert disp["patrol_unit_assigned"].startswith("PCR-")
+    assert "01" in disp["patrol_unit_assigned"]
+    assert disp["dispatch_status"] == "DISPATCHED"
+
+
+def test_case_evidence_export_json_packet():
+    """
+    Verifies comprehensive structured evidence export in JSON format,
+    including case lifecycle, target ATM details, candidate ATMs,
+    convergences, clusters, and verified Phase 2 ML provenance.
+    """
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=95000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=20.0,
+        incident_hour=14,
+        incident_day_of_week=4,
+        complaint_id="CMP-TEST-EVID-JSON-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    # Add a dispatch record
+    dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-WEST-01", notes="Evidence verification unit"),
+    )
+
+    # 1. Direct JSON packet
+    evidence = export_case_evidence_endpoint(case_id=case_id, format="json", download=False)
+    assert isinstance(evidence, dict)
+    assert "export_timestamp" in evidence
+
+    # Verify sections
+    assert "case" in evidence
+    assert evidence["case"]["case_id"] == case_id
+    assert evidence["case"]["priority_level"] in ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+
+    assert "dispatch" in evidence
+    assert evidence["dispatch"]["patrol_unit_assigned"] == "PCR-WEST-01"
+    assert evidence["dispatch"]["dispatch_status"] == "DISPATCHED"
+
+    assert "prediction" in evidence
+    assert evidence["prediction"]["complaint_id"] == "CMP-TEST-EVID-JSON-01"
+
+    assert "target_atm" in evidence
+    assert evidence["target_atm"]["atm_id"] == pred_res["predicted_atm_id"]
+    assert "latitude" in evidence["target_atm"]
+    assert "longitude" in evidence["target_atm"]
+
+    assert "top_candidates" in evidence
+    assert isinstance(evidence["top_candidates"], list)
+
+    assert "convergences" in evidence
+    assert isinstance(evidence["convergences"], list)
+
+    assert "clusters" in evidence
+    assert isinstance(evidence["clusters"], list)
+
+    # Verify model provenance
+    assert "model_provenance" in evidence
+    prov = evidence["model_provenance"]
+    assert prov["evaluation_partition"] == "P3_FUTURE_TEST_ONLY"
+    metrics = prov["verified_metrics"]
+    assert metrics["top1_spatial_accuracy_pct"] == 10.17
+    assert metrics["top3_spatial_accuracy_pct"] == 31.71
+    assert metrics["top5_spatial_accuracy_pct"] == 41.88
+    assert metrics["zone_level_accuracy_pct"] == 68.89
+    assert metrics["calibrated_brier_score"] == 0.9726
+    assert metrics["calibrated_log_loss"] == 3.5199
+    assert metrics["temporal_window_coverage_pct"] == 50.38
+
+    # 2. Download JSON attachment
+    download_resp = export_case_evidence_endpoint(case_id=case_id, format="json", download=True)
+    assert download_resp.media_type == "application/json"
+    assert f"evidence_{case_id}.json" in download_resp.headers["Content-Disposition"]
+    payload_data = json.loads(download_resp.body.decode("utf-8"))
+    assert payload_data["case"]["case_id"] == case_id
+
+
+def test_case_evidence_export_csv():
+    """
+    Verifies structured evidence export formatted as a standardized CSV table.
+    """
+    req = PredictionRequest(
+        crime_category="PHISHING_UPI",
+        reported_amount=60000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_HDFC_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_NORTH",
+        reporting_delay_mins=22.0,
+        incident_hour=16,
+        incident_day_of_week=5,
+        complaint_id="CMP-TEST-EVID-CSV-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-NORTH-05"),
+    )
+
+    csv_resp = export_case_evidence_endpoint(case_id=case_id, format="csv")
+    assert csv_resp.media_type == "text/csv"
+    assert f"evidence_{case_id}.csv" in csv_resp.headers["Content-Disposition"]
+
+    csv_text = csv_resp.body.decode("utf-8")
+    assert "SECTION,FIELD,VALUE" in csv_text
+    assert "CASE_METADATA,Case ID," + case_id in csv_text
+    assert "TARGET_ATM,ATM ID," + pred_res["predicted_atm_id"] in csv_text
+    assert "PATROL_DISPATCH,Assigned Unit,PCR-NORTH-05" in csv_text
+    assert "ML_PROVENANCE,Top-1 Accuracy,10.17%" in csv_text
+    assert "ML_PROVENANCE,Zone Accuracy,68.89%" in csv_text
+
+
+def test_case_evidence_export_nonexistent_case():
+    """
+    Verifies that attempting to export evidence for a non-existent case raises HTTP 404.
+    """
+    with pytest.raises(HTTPException) as exc_info:
+        export_case_evidence_endpoint(case_id="CASE-00000000-NONEXIST")
+    assert exc_info.value.status_code == 404
+
 
 
 

@@ -24,7 +24,7 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -43,6 +43,13 @@ from backend.app.case_engine import (
     list_operational_cases,
     transition_case_status,
 )
+from backend.app.dispatch_engine import (
+    compile_case_evidence_packet,
+    create_or_get_patrol_dispatch,
+    export_case_evidence_csv,
+    get_dispatch_by_case_id,
+    list_patrol_dispatches,
+)
 from backend.app.schemas import (
     ATMLocationResponse,
     CaseResponse,
@@ -50,6 +57,9 @@ from backend.app.schemas import (
     ClusterResponse,
     ComplaintResponse,
     ConvergenceResponse,
+    DispatchCreateRequest,
+    DispatchResponse,
+    EvidenceExportResponse,
     HotspotZone,
     InvestigatorPlaybook,
     ModelInfoResponse,
@@ -496,6 +506,86 @@ def transition_case_endpoint(case_id: str, request: CaseStatusUpdateRequest):
     with get_db_connection() as conn:
         updated = transition_case_status(conn, case_id, request.status, request.notes)
     return updated
+
+
+# ==============================================================================
+# 5b. FIELD PATROL DISPATCH & EVIDENCE EXPORT ENDPOINTS
+# ==============================================================================
+@app.post("/api/cases/{case_id}/dispatch", response_model=DispatchResponse, tags=["Dispatch & Evidence"])
+def dispatch_patrol_endpoint(case_id: str, request: Optional[DispatchCreateRequest] = None):
+    """
+    Creates or updates a patrol dispatch record for an operational case.
+    Transitions dispatch status to 'DISPATCHED' and auto-advances the case
+    lifecycle from 'NEW_ALERT' to 'PATROL_DISPATCHED'.
+    """
+    patrol_unit = request.patrol_unit if request else ""
+    notes = request.notes if request else ""
+    auto_advance = request.auto_advance_case if request else True
+    with get_db_connection() as conn:
+        dispatch_record = create_or_get_patrol_dispatch(
+            db_conn=conn,
+            case_id=case_id,
+            patrol_unit=patrol_unit,
+            notes=notes,
+            auto_advance_case=auto_advance,
+            mark_dispatched=True,
+        )
+    return dispatch_record
+
+
+@app.get("/api/cases/{case_id}/dispatch", response_model=DispatchResponse, tags=["Dispatch & Evidence"])
+def get_case_dispatch_endpoint(case_id: str):
+    """Retrieves active patrol dispatch record for a specific operational case."""
+    with get_db_connection() as conn:
+        dispatch_record = get_dispatch_by_case_id(conn, case_id)
+    if not dispatch_record:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No patrol dispatch record found for case '{case_id}'.",
+        )
+    return dispatch_record
+
+
+@app.get("/api/dispatches", response_model=List[DispatchResponse], tags=["Dispatch & Evidence"])
+def list_dispatches_endpoint(limit: int = Query(25, ge=1, le=100)):
+    """Lists recent patrol dispatch routing records."""
+    actual_limit = limit if isinstance(limit, int) else getattr(limit, "default", 25)
+    with get_db_connection() as conn:
+        dispatches = list_patrol_dispatches(conn, limit=actual_limit)
+    return dispatches
+
+
+@app.get("/api/cases/{case_id}/evidence", tags=["Dispatch & Evidence"])
+def export_case_evidence_endpoint(
+    case_id: str,
+    format: str = Query("json", description="Export format: 'json' or 'csv'"),
+    download: bool = Query(False, description="Set true to return download attachment headers"),
+):
+    """
+    Compiles and exports comprehensive structured evidence for an operational case.
+    Includes case ID, prediction, top candidates, time window, priority, reasons,
+    active convergences/clusters, patrol dispatch status, and model provenance.
+    """
+    fmt = format.lower() if isinstance(format, str) else "json"
+    with get_db_connection() as conn:
+        evidence = compile_case_evidence_packet(conn, case_id)
+
+    if fmt == "csv":
+        csv_content = export_case_evidence_csv(evidence)
+        headers = {
+            "Content-Disposition": f"attachment; filename=\"evidence_{case_id}.csv\""
+        }
+        return Response(content=csv_content, media_type="text/csv", headers=headers)
+
+    # JSON output
+    if download:
+        json_content = json.dumps(evidence, indent=2)
+        headers = {
+            "Content-Disposition": f"attachment; filename=\"evidence_{case_id}.json\""
+        }
+        return Response(content=json_content, media_type="application/json", headers=headers)
+
+    return evidence
 
 
 @app.post("/api/playbook", response_model=InvestigatorPlaybook, status_code=status.HTTP_200_OK, tags=["Predictive Analytics"])

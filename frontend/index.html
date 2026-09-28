@@ -224,12 +224,25 @@
             <span id="predAlertStateBadge" class="alert-state-badge state-new">NEW ALERT</span>
             <span id="predCaseIdBadge" class="case-id-badge" style="display:none;"></span>
             <span id="predCaseStatusBadge" class="case-status-badge status-new_alert" style="display:none;">NEW_ALERT</span>
+            <span id="predDispatchBadge" class="dispatch-badge" style="display:none;">READY</span>
             <span id="predRiskBadge" class="risk-tag risk-critical" style="display:none;">CRITICAL RISK</span>
           </div>
           <div class="hero-header-actions">
             <button type="button" id="btnCaseTransition" class="btn-case-transition" style="display:none;" title="Advance Case Lifecycle">
               <span id="caseTransitionText">Dispatch Patrol</span>
             </button>
+            <button type="button" id="btnViewDispatch" class="btn-action-ghost" style="display:none;" title="View Field Dispatch Details">
+              <span>&#128659; Dispatch</span>
+            </button>
+            <div class="evidence-export-container" style="display:inline-block; position:relative;">
+              <button type="button" id="btnExportEvidence" class="btn-action-ghost" style="display:none;" title="Export Structured Case Evidence">
+                <span>&#128190; Evidence &#9662;</span>
+              </button>
+              <div id="evidenceDropdown" class="evidence-dropdown-menu" style="display:none;">
+                <a href="#" id="btnExportJson" class="evidence-menu-item">Download JSON</a>
+                <a href="#" id="btnExportCsv" class="evidence-menu-item">Download CSV</a>
+              </div>
+            </div>
             <button type="button" id="btnCopyDispatch" class="btn-copy-brief" title="Copy Dispatch Brief for Field Patrol">
               <span id="copyBriefIcon">&#128203;</span>
               <span id="copyBriefText">Copy Brief</span>
@@ -633,6 +646,44 @@
           <div><b>Temporal 25th–75th Window Coverage:</b> <span id="modalTemporal">50.38%</span></div>
           <div><b>Calibrated Brier Score:</b> <span id="modalBrier">0.9726</span></div>
           <div><b>Calibrated Log-Loss:</b> <span id="modalLogLoss">3.5199</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Field Patrol Dispatch Routing -->
+  <div id="dispatchModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-title-row">
+        <h3 style="font-size: 1rem; font-weight: 700;">Field Patrol Dispatch &amp; Tactical Routing</h3>
+        <button id="closeDispatchModalBtn" class="btn-close-modal" type="button">&times;</button>
+      </div>
+      <div class="dispatch-modal-content">
+        <div class="dispatch-info-grid">
+          <div><b>Case ID:</b> <span id="dispModalCaseId">--</span></div>
+          <div><b>Dispatch ID:</b> <span id="dispModalDispatchId">--</span></div>
+          <div><b>Case Status:</b> <span id="dispModalCaseStatus" class="case-status-badge">--</span></div>
+          <div><b>Dispatch Status:</b> <span id="dispModalDispatchStatus" class="dispatch-badge">--</span></div>
+          <div><b>Target ATM:</b> <span id="dispModalAtm">--</span></div>
+          <div><b>Zone:</b> <span id="dispModalZone">--</span></div>
+          <div><b>Priority:</b> <span id="dispModalPriority">--</span></div>
+          <div><b>Tactical Window:</b> <span id="dispModalWindow">--</span></div>
+        </div>
+        <div class="dispatch-input-row" style="margin-top: 12px;">
+          <label for="dispModalUnitInput" style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 4px;">Assigned Patrol Unit (Callsign):</label>
+          <input type="text" id="dispModalUnitInput" class="mini-text-input" placeholder="e.g. PCR-WEST-01" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: 4px; box-sizing: border-box;">
+        </div>
+        <div class="dispatch-input-row" style="margin-top: 8px;">
+          <label for="dispModalNotesInput" style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 4px;">Operational Dispatcher Remarks:</label>
+          <textarea id="dispModalNotesInput" rows="2" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: 4px; box-sizing: border-box;" placeholder="Optional dispatch instructions or field notes..."></textarea>
+        </div>
+        <div class="dispatch-brief-preview" style="margin-top: 10px; background: var(--bg-card-subtle); padding: 8px 10px; border-radius: 4px; font-size: 0.75rem; border: 1px solid var(--border-subtle);">
+          <b>Sector Tactical Brief:</b>
+          <div id="dispModalTacticalBrief" style="color: var(--text-muted); margin-top: 4px; line-height: 1.4;">--</div>
+        </div>
+        <div class="modal-actions-row" style="margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" id="btnCancelDispatchModal" class="btn-action-ghost">Close</button>
+          <button type="button" id="btnConfirmDispatchModal" class="btn-case-transition">Dispatch Unit</button>
         </div>
       </div>
     </div>

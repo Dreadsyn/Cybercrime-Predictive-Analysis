@@ -305,6 +305,41 @@ class CaseStatusUpdateRequest(BaseModel):
     notes: Optional[str] = Field(default="", description="Operational dispatcher remarks or patrol unit logs")
 
 
+class DispatchCreateRequest(BaseModel):
+    patrol_unit: Optional[str] = Field(default="", description="Assigned patrol unit callsign (e.g. PCR-WEST-04)")
+    notes: Optional[str] = Field(default="", description="Optional dispatcher operational notes")
+    auto_advance_case: bool = Field(default=True, description="Whether to automatically advance case to PATROL_DISPATCHED")
+
+
+class DispatchResponse(BaseModel):
+    dispatch_id: str
+    case_id: str
+    target_atm_id: str
+    zone_id: str
+    priority_score: int
+    priority_level: str
+    lead_time_window: str
+    patrol_unit_assigned: str
+    dispatch_status: str  # "READY", "DISPATCHED"
+    playbook_actions: List[Dict[str, Any]] = Field(default_factory=list)
+    tactical_brief: str
+    dispatched_timestamp: Optional[str] = None
+    created_timestamp: str
+    notes: Optional[str] = ""
+
+
+class EvidenceExportResponse(BaseModel):
+    export_timestamp: str
+    case: CaseResponse
+    dispatch: Optional[DispatchResponse] = None
+    prediction: Optional[Dict[str, Any]] = None
+    target_atm: Optional[Dict[str, Any]] = None
+    top_candidates: List[Dict[str, Any]] = Field(default_factory=list)
+    convergences: List[Dict[str, Any]] = Field(default_factory=list)
+    clusters: List[Dict[str, Any]] = Field(default_factory=list)
+    model_provenance: Optional[Dict[str, Any]] = None
+
+
 class PlaybookRequest(BaseModel):
     prediction_id: Optional[str] = None
     predicted_atm_id: str

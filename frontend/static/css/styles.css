@@ -689,6 +689,67 @@ body {
   cursor: not-allowed;
 }
 
+.dispatch-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: var(--radius-sm);
+  background: #fdf2f8;
+  color: #9d174d;
+  border: 1px solid #fbcfe8;
+  letter-spacing: 0.03em;
+}
+
+.dispatch-badge.status-dispatched {
+  background: #ecfdf5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+
+.evidence-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  min-width: 140px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.evidence-menu-item {
+  display: block;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  color: var(--text-main);
+  text-decoration: none;
+  font-weight: 600;
+  transition: background 0.15s ease;
+}
+
+.evidence-menu-item:hover {
+  background: var(--bg-card-subtle);
+  color: var(--accent-teal);
+}
+
+.dispatch-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 0.75rem;
+}
+
+
 .alert-lifecycle-banner {
   display: flex;
   align-items: center;

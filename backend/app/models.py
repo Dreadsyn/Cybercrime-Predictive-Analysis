@@ -102,10 +102,32 @@ CREATE TABLE IF NOT EXISTS operational_cases (
 );
 """
 
+SQL_CREATE_PATROL_DISPATCHES = """
+CREATE TABLE IF NOT EXISTS patrol_dispatches (
+    dispatch_id VARCHAR(32) PRIMARY KEY,
+    case_id VARCHAR(32) NOT NULL,
+    target_atm_id VARCHAR(32) NOT NULL,
+    zone_id VARCHAR(50) NOT NULL,
+    priority_score INTEGER NOT NULL DEFAULT 0,
+    priority_level VARCHAR(20) NOT NULL DEFAULT 'LOW',
+    lead_time_window TEXT NOT NULL DEFAULT '',
+    patrol_unit_assigned VARCHAR(64) NOT NULL DEFAULT '',
+    dispatch_status VARCHAR(30) NOT NULL DEFAULT 'READY',
+    playbook_actions_json TEXT NOT NULL DEFAULT '[]',
+    tactical_brief TEXT NOT NULL DEFAULT '',
+    dispatched_timestamp TEXT DEFAULT NULL,
+    created_timestamp TEXT NOT NULL,
+    notes TEXT DEFAULT '',
+    FOREIGN KEY (case_id) REFERENCES operational_cases (case_id) ON DELETE CASCADE,
+    FOREIGN KEY (target_atm_id) REFERENCES atm_locations (atm_id)
+);
+"""
+
 ALL_TABLE_DDL = [
     SQL_CREATE_ATM_LOCATIONS,
     SQL_CREATE_COMPLAINTS,
     SQL_CREATE_CASHOUT_EVENTS,
     SQL_CREATE_PREDICTIONS,
     SQL_CREATE_OPERATIONAL_CASES,
+    SQL_CREATE_PATROL_DISPATCHES,
 ]

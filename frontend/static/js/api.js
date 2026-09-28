@@ -123,5 +123,30 @@ export const API = {
       body: JSON.stringify({ status, notes }),
     });
   },
+
+  // 11. Field Patrol Dispatch Routing & Evidence Export (Feature)
+  async dispatchPatrol(caseId, payload = {}) {
+    return await request(`/cases/${encodeURIComponent(caseId)}/dispatch`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getCaseDispatch(caseId) {
+    return await request(`/cases/${encodeURIComponent(caseId)}/dispatch`);
+  },
+
+  async getDispatches(limit = 25) {
+    return await request(`/dispatches?limit=${limit}`);
+  },
+
+  getEvidenceDownloadUrl(caseId, format = "json") {
+    return `${API_BASE}/cases/${encodeURIComponent(caseId)}/evidence?format=${encodeURIComponent(format)}&download=true`;
+  },
+
+  async getEvidence(caseId, format = "json") {
+    return await request(`/cases/${encodeURIComponent(caseId)}/evidence?format=${encodeURIComponent(format)}`);
+  },
 };
+
 

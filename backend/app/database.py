@@ -41,7 +41,7 @@ def get_db_connection():
         conn.close()
 
 
-REQUIRED_OPERATIONAL_TABLES = {"atm_locations", "complaints", "cash_out_events", "predictions", "operational_cases"}
+REQUIRED_OPERATIONAL_TABLES = {"atm_locations", "complaints", "cash_out_events", "predictions", "operational_cases", "patrol_dispatches"}
 
 
 def verify_database_readiness(conn) -> tuple[bool, str]:
@@ -62,13 +62,14 @@ def verify_database_readiness(conn) -> tuple[bool, str]:
 
 
 def ensure_db_schema():
-    """Ensures operational_cases table and newly added columns exist for backwards compatibility."""
+    """Ensures operational_cases and patrol_dispatches tables and newly added columns exist for backwards compatibility."""
     if not DB_PATH.exists():
         return
     with get_db_connection() as conn:
         cur = conn.cursor()
-        from backend.app.models import SQL_CREATE_OPERATIONAL_CASES
+        from backend.app.models import SQL_CREATE_OPERATIONAL_CASES, SQL_CREATE_PATROL_DISPATCHES
         cur.execute(SQL_CREATE_OPERATIONAL_CASES)
+        cur.execute(SQL_CREATE_PATROL_DISPATCHES)
 
         cur.execute("PRAGMA table_info(predictions);")
         existing_cols = {row["name"] for row in cur.fetchall()}

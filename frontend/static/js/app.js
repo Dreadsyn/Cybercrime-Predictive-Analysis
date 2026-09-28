@@ -470,13 +470,20 @@ function renderPredictionResult(result) {
     }
   }
 
-  // Operational Case Lifecycle (Feature: Case IDs + Case Lifecycle)
+  // Operational Case Lifecycle & Patrol Dispatch (Feature: Dispatch Routing & Evidence Export)
+  window.currentActivePrediction = result;
   const caseIdBadge = document.getElementById("predCaseIdBadge");
   const caseStatusBadge = document.getElementById("predCaseStatusBadge");
+  const dispatchBadge = document.getElementById("predDispatchBadge");
   const btnTransition = document.getElementById("btnCaseTransition");
   const transitionText = document.getElementById("caseTransitionText");
+  const btnViewDispatch = document.getElementById("btnViewDispatch");
+  const btnExportEvidence = document.getElementById("btnExportEvidence");
+  const evidenceDropdown = document.getElementById("evidenceDropdown");
+  const btnExportJson = document.getElementById("btnExportJson");
+  const btnExportCsv = document.getElementById("btnExportCsv");
 
-  function updateCaseControls(caseId, status) {
+  function updateCaseControls(caseId, status, dispatchInfo = null) {
     if (caseIdBadge) {
       if (caseId) {
         caseIdBadge.innerText = caseId;
@@ -494,6 +501,34 @@ function renderPredictionResult(result) {
         caseStatusBadge.style.display = "none";
       }
     }
+
+    if (dispatchBadge) {
+      if (!caseId) {
+        dispatchBadge.style.display = "none";
+      } else if (status === "PATROL_DISPATCHED") {
+        const unitName = dispatchInfo?.patrol_unit_assigned || "PATROL";
+        dispatchBadge.innerText = `${unitName}: DISPATCHED`;
+        dispatchBadge.className = "dispatch-badge status-dispatched";
+        dispatchBadge.style.display = "inline-flex";
+      } else if (status === "RESOLVED") {
+        dispatchBadge.innerText = "RESOLVED";
+        dispatchBadge.className = "dispatch-badge status-dispatched";
+        dispatchBadge.style.display = "inline-flex";
+      } else {
+        dispatchBadge.innerText = "READY";
+        dispatchBadge.className = "dispatch-badge";
+        dispatchBadge.style.display = "inline-flex";
+      }
+    }
+
+    if (btnViewDispatch) {
+      btnViewDispatch.style.display = caseId ? "inline-flex" : "none";
+    }
+
+    if (btnExportEvidence) {
+      btnExportEvidence.style.display = caseId ? "inline-flex" : "none";
+    }
+
     if (btnTransition && transitionText) {
       if (!caseId || status === "RESOLVED") {
         if (status === "RESOLVED") {
@@ -523,31 +558,83 @@ function renderPredictionResult(result) {
 
   updateCaseControls(result.case_id, result.case_status);
 
+  // Load existing dispatch if case already has one
+  if (result.case_id && result.case_status === "PATROL_DISPATCHED") {
+    API.getCaseDispatch(result.case_id)
+      .then(disp => {
+        if (disp) updateCaseControls(result.case_id, result.case_status, disp);
+      })
+      .catch(() => {});
+  }
+
+  // Action: Transition Case or Launch Dispatch
   if (btnTransition) {
     btnTransition.onclick = async () => {
       const currentStatus = result.case_status || "NEW_ALERT";
-      let nextStatus = null;
       if (currentStatus === "NEW_ALERT") {
-        nextStatus = "PATROL_DISPATCHED";
+        // Open Dispatch Modal to inspect tactical route & confirm dispatch
+        openDispatchModal(result);
       } else if (currentStatus === "PATROL_DISPATCHED") {
-        nextStatus = "RESOLVED";
-      }
-      if (!nextStatus || !result.case_id) return;
-
-      btnTransition.disabled = true;
-      if (transitionText) transitionText.innerText = "Updating...";
-      try {
-        const updateResp = await API.updateCaseStatus(result.case_id, nextStatus, "Status transitioned from tactical UI");
-        result.case_status = updateResp.case_status;
-        updateCaseControls(result.case_id, result.case_status);
-        showToast(`Case ${result.case_id} transitioned to ${nextStatus}`, "success");
-        await loadAlertHistory();
-      } catch (err) {
-        showToast(`Failed to update case status: ${err.message}`, "error");
-        updateCaseControls(result.case_id, result.case_status);
+        // Mark case as resolved
+        btnTransition.disabled = true;
+        if (transitionText) transitionText.innerText = "Resolving...";
+        try {
+          const updateResp = await API.updateCaseStatus(result.case_id, "RESOLVED", "Patrol intervention completed and cashout averted.");
+          result.case_status = updateResp.case_status;
+          updateCaseControls(result.case_id, result.case_status);
+          showToast(`Case ${result.case_id} marked RESOLVED`, "success");
+          await loadAlertHistory();
+        } catch (err) {
+          showToast(`Failed to update case status: ${err.message}`, "error");
+          updateCaseControls(result.case_id, result.case_status);
+        }
       }
     };
   }
+
+  // Action: Open Dispatch Details Modal directly
+  if (btnViewDispatch) {
+    btnViewDispatch.onclick = () => {
+      openDispatchModal(result);
+    };
+  }
+
+  // Action: Evidence Export Controls
+  if (btnExportEvidence) {
+    btnExportEvidence.onclick = (e) => {
+      e.stopPropagation();
+      if (evidenceDropdown) {
+        evidenceDropdown.style.display = evidenceDropdown.style.display === "block" ? "none" : "block";
+      }
+    };
+  }
+
+  if (btnExportJson) {
+    btnExportJson.onclick = (e) => {
+      e.preventDefault();
+      if (evidenceDropdown) evidenceDropdown.style.display = "none";
+      if (!result.case_id) return;
+      window.location.href = API.getEvidenceDownloadUrl(result.case_id, "json");
+      showToast(`Downloading JSON evidence packet for case ${result.case_id}`, "info");
+    };
+  }
+
+  if (btnExportCsv) {
+    btnExportCsv.onclick = (e) => {
+      e.preventDefault();
+      if (evidenceDropdown) evidenceDropdown.style.display = "none";
+      if (!result.case_id) return;
+      window.location.href = API.getEvidenceDownloadUrl(result.case_id, "csv");
+      showToast(`Downloading CSV evidence packet for case ${result.case_id}`, "info");
+    };
+  }
+
+  // Dismiss dropdown on outside click
+  window.addEventListener("click", () => {
+    if (evidenceDropdown && evidenceDropdown.style.display === "block") {
+      evidenceDropdown.style.display = "none";
+    }
+  });
 
   // Intervention Window (HH:MM – HH:MM)
   if (windowEl && result.predicted_window_start && result.predicted_window_end) {
@@ -1033,7 +1120,152 @@ function setupModalListeners() {
       closeModal();
     }
   });
+
+  setupDispatchModalListeners();
 }
+
+/**
+ * Opens and populates the Field Patrol Dispatch modal.
+ */
+async function openDispatchModal(result) {
+  const modal = document.getElementById("dispatchModal");
+  if (!modal || !result.case_id) return;
+
+  const caseIdEl = document.getElementById("dispModalCaseId");
+  const dispatchIdEl = document.getElementById("dispModalDispatchId");
+  const caseStatusEl = document.getElementById("dispModalCaseStatus");
+  const dispStatusEl = document.getElementById("dispModalDispatchStatus");
+  const atmEl = document.getElementById("dispModalAtm");
+  const zoneEl = document.getElementById("dispModalZone");
+  const priorityEl = document.getElementById("dispModalPriority");
+  const windowEl = document.getElementById("dispModalWindow");
+  const unitInput = document.getElementById("dispModalUnitInput");
+  const notesInput = document.getElementById("dispModalNotesInput");
+  const briefEl = document.getElementById("dispModalTacticalBrief");
+  const confirmBtn = document.getElementById("btnConfirmDispatchModal");
+
+  caseIdEl.innerText = result.case_id;
+  atmEl.innerText = result.predicted_atm_id || "--";
+  zoneEl.innerText = (result.predicted_zone_id || "--").replace("ZONE_", "Zone ");
+  priorityEl.innerText = `${result.priority_level || "MEDIUM"} (${result.priority_score || 50}/100)`;
+
+  let leadWin = "Immediate Intercept Window";
+  if (result.predicted_window_start && result.predicted_window_end) {
+    leadWin = `${result.predicted_window_start.substring(11, 16)} – ${result.predicted_window_end.substring(11, 16)} hrs`;
+  }
+  windowEl.innerText = leadWin;
+
+  const defaultUnit = `PCR-${(result.predicted_zone_id || "ZONE").replace("ZONE_", "")}-01`;
+  unitInput.value = defaultUnit;
+  notesInput.value = "";
+
+  const defaultBrief = (result.playbook && (result.playbook.dispatch_brief || result.playbook.summary)) ||
+    `[TACTICAL BRIEF] Priority: ${result.priority_level} | Target ATM: ${result.predicted_atm_id} (${zoneEl.innerText}) | Window: ${leadWin}`;
+  briefEl.innerText = defaultBrief;
+
+  // Try to load existing dispatch if any
+  try {
+    const existing = await API.getCaseDispatch(result.case_id);
+    if (existing) {
+      dispatchIdEl.innerText = existing.dispatch_id;
+      dispStatusEl.innerText = existing.dispatch_status;
+      dispStatusEl.className = `dispatch-badge status-${existing.dispatch_status.toLowerCase()}`;
+      if (existing.patrol_unit_assigned) unitInput.value = existing.patrol_unit_assigned;
+      if (existing.tactical_brief) briefEl.innerText = existing.tactical_brief;
+      caseStatusEl.innerText = result.case_status || "PATROL_DISPATCHED";
+      caseStatusEl.className = `case-status-badge status-${(result.case_status || "patrol_dispatched").toLowerCase()}`;
+      confirmBtn.innerText = existing.dispatch_status === "DISPATCHED" ? "Update Dispatch" : "Dispatch Unit";
+    }
+  } catch (err) {
+    dispatchIdEl.innerText = "NOT_DISPATCHED";
+    dispStatusEl.innerText = "READY";
+    dispStatusEl.className = "dispatch-badge";
+    caseStatusEl.innerText = result.case_status || "NEW_ALERT";
+    caseStatusEl.className = `case-status-badge status-${(result.case_status || "new_alert").toLowerCase()}`;
+    confirmBtn.innerText = "Confirm & Dispatch";
+  }
+
+  modal.style.display = "flex";
+}
+
+function setupDispatchModalListeners() {
+  const modal = document.getElementById("dispatchModal");
+  const closeBtn = document.getElementById("closeDispatchModalBtn");
+  const cancelBtn = document.getElementById("btnCancelDispatchModal");
+  const confirmBtn = document.getElementById("btnConfirmDispatchModal");
+  const unitInput = document.getElementById("dispModalUnitInput");
+  const notesInput = document.getElementById("dispModalNotesInput");
+
+  if (!modal) return;
+
+  const closeModal = () => {
+    modal.style.display = "none";
+  };
+
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+  if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
+
+  window.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal.style.display === "flex") {
+      closeModal();
+    }
+  });
+
+  if (confirmBtn) {
+    confirmBtn.addEventListener("click", async () => {
+      const res = window.currentActivePrediction;
+      if (!res || !res.case_id) return;
+      const unit = unitInput.value.trim() || `PCR-${(res.predicted_zone_id || "ZONE").replace("ZONE_", "")}-01`;
+      const notes = notesInput.value.trim();
+
+      confirmBtn.disabled = true;
+      const origText = confirmBtn.innerText;
+      confirmBtn.innerText = "Dispatching...";
+      try {
+        const disp = await API.dispatchPatrol(res.case_id, {
+          patrol_unit: unit,
+          notes: notes,
+          auto_advance_case: true,
+        });
+        res.case_status = "PATROL_DISPATCHED";
+        closeModal();
+        showToast(`Field patrol unit ${disp.patrol_unit_assigned} dispatched (ID: ${disp.dispatch_id})`, "success");
+
+        // Update hero badges
+        const caseStatusBadge = document.getElementById("predCaseStatusBadge");
+        if (caseStatusBadge) {
+          caseStatusBadge.innerText = "PATROL_DISPATCHED";
+          caseStatusBadge.className = "case-status-badge status-patrol_dispatched";
+        }
+        const dispatchBadge = document.getElementById("predDispatchBadge");
+        if (dispatchBadge) {
+          dispatchBadge.innerText = `${disp.patrol_unit_assigned}: DISPATCHED`;
+          dispatchBadge.className = "dispatch-badge status-dispatched";
+        }
+        const btnTransition = document.getElementById("btnCaseTransition");
+        const transitionText = document.getElementById("caseTransitionText");
+        if (btnTransition && transitionText) {
+          btnTransition.disabled = false;
+          btnTransition.style.opacity = "1";
+          btnTransition.style.cursor = "pointer";
+          transitionText.innerText = "Resolve Case";
+        }
+
+        await loadAlertHistory();
+      } catch (err) {
+        showToast(`Failed to dispatch patrol: ${err.message}`, "error");
+      } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.innerText = origText;
+      }
+    });
+  }
+}
+
 
 /**
  * Toast notifications for user feedback.
