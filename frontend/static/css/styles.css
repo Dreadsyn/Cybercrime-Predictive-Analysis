@@ -232,18 +232,38 @@ body {
 .workflow-ribbon {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 0.7rem;
   color: var(--text-dim);
   background: var(--bg-card-subtle);
-  padding: 4px 12px;
+  padding: 5px 14px;
   border-radius: 9999px;
   border: 1px solid var(--border-subtle);
+  overflow-x: auto;
 }
 
 .wf-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-weight: 600;
   color: var(--text-muted);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.wf-step .wf-num {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--border-muted);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  transition: all 0.2s ease;
 }
 
 .wf-step.active {
@@ -251,8 +271,25 @@ body {
   font-weight: 700;
 }
 
+.wf-step.active .wf-num {
+  background: var(--accent-teal);
+  color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.25);
+}
+
+.wf-step.completed {
+  color: #059669;
+  font-weight: 600;
+}
+
+.wf-step.completed .wf-num {
+  background: #10b981;
+  color: #ffffff;
+}
+
 .wf-arrow {
   color: var(--border-muted);
+  font-size: 0.75rem;
 }
 
 /* ==============================================================================
@@ -475,8 +512,56 @@ body {
 }
 
 /* ==============================================================================
-   4. Hero Prediction Result Presentation Card
+   4. Hero Prediction Result Presentation Card & Intake Placeholder
    ============================================================================== */
+.forecast-placeholder-card {
+  background: var(--bg-card-subtle);
+  border: 1px dashed var(--border-muted);
+  border-radius: var(--radius-md);
+  padding: 24px 18px;
+  margin-top: 14px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.placeholder-icon {
+  font-size: 2rem;
+  color: var(--accent-teal);
+  margin-bottom: 8px;
+}
+
+.placeholder-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.placeholder-subtitle {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  max-width: 380px;
+  margin: 0 auto 12px auto;
+}
+
+.placeholder-chips {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.placeholder-chip {
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  color: var(--accent-teal-dark);
+  padding: 3px 8px;
+  border-radius: 9999px;
+}
+
 .forecast-result-card {
   background: #ffffff;
   border: 1px solid var(--border-subtle);
@@ -486,6 +571,47 @@ body {
   margin-top: 12px;
   display: none;
   box-shadow: var(--shadow-sm);
+}
+
+/* Operational Action Toolbar */
+.hero-operational-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.toolbar-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn-action-outcome {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #166534;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 5px 11px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-action-outcome:hover {
+  background: #dcfce7;
+  border-color: #4ade80;
 }
 
 /* Hero Header: Urgency & Score */
@@ -1247,15 +1373,46 @@ body {
 
 .map-controls-row {
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
   align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
+  width: 100%;
 }
 
 .zone-filter-pills {
   display: flex;
   gap: 4px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.map-aux-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn-map-control {
+  background: #ffffff;
+  border: 1px solid var(--border-muted);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.15s ease;
+}
+
+.btn-map-control:hover {
+  background: var(--bg-card-hover);
+  color: var(--accent-teal-dark);
+  border-color: var(--accent-teal);
 }
 
 .btn-zone-filter {
@@ -1300,6 +1457,34 @@ body {
   background: #e2e8f0;
 }
 
+.map-panel.is-fullscreen {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  z-index: 2500 !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  padding: 16px !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.map-panel.is-fullscreen .map-wrapper {
+  flex: 1 !important;
+  height: auto !important;
+  min-height: calc(100vh - 170px) !important;
+}
+
+.map-panel.is-fullscreen .leaflet-map-viewport {
+  height: 100% !important;
+}
+
 .map-floating-legend {
   position: absolute;
   bottom: 12px;
@@ -1334,6 +1519,7 @@ body {
 .dot-branch { background: var(--accent-teal); }
 .dot-kiosk { background: var(--risk-moderate); }
 .dot-target { background: var(--risk-critical); }
+.dot-candidate { background: #ea580c; }
 .dot-conv-atm {
   background: var(--risk-critical);
   border: 1.5px solid #ffffff;
@@ -1343,6 +1529,52 @@ body {
   background: #f0fdfa;
   border: 1.5px dashed var(--accent-teal);
   border-radius: 2px;
+}
+
+/* Candidate Map Pin Badges */
+.cand-map-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.cand-pin-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 800;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.cand-pin-badge:hover {
+  transform: scale(1.15);
+}
+
+.cand-pin-badge.rank-1-target {
+  background: #dc2626;
+  border: 2px solid #ffffff;
+  border-radius: 12px;
+  font-size: 10px;
+  padding: 2px 8px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  animation: pulse-target 1.8s infinite ease-in-out;
+}
+
+@keyframes pulse-target {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+}
+
+.cand-pin-badge.rank-secondary {
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  font-size: 11px;
+  width: 26px;
+  height: 26px;
 }
 
 /* Contextual Selected Location / Map Intelligence Panel */

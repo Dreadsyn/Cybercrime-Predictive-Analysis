@@ -59,6 +59,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupConvergenceListeners();
   setupPerformanceListeners();
 
+  // Initialize Workflow Ribbon to Step 1: Complaint Intake
+  setWorkflowStep(1);
+
   // 3. Load Core Telemetry & Data
   await loadDashboardData();
 });
@@ -373,12 +376,36 @@ function escapeHtml(str) {
 }
 
 /**
+ * Updates the 7-step SIH operational workflow ribbon state:
+ * 1. Complaint, 2. Prediction, 3. Priority, 4. Map, 5. Convergence, 6. Dispatch, 7. Outcome
+ */
+function setWorkflowStep(stepIndex) {
+  for (let i = 1; i <= 7; i++) {
+    const el = document.getElementById(`wfStep${i}`);
+    if (!el) continue;
+    if (i < stepIndex) {
+      el.className = "wf-step completed";
+    } else if (i === stepIndex) {
+      el.className = "wf-step active";
+    } else {
+      el.className = "wf-step";
+    }
+  }
+}
+
+/**
  * Render predictive inference results to the output card.
  */
 function renderPredictionResult(result) {
+  const placeholder = document.getElementById("forecastCardPlaceholder");
+  if (placeholder) placeholder.style.display = "none";
+
   const card = document.getElementById("forecastCard");
   if (!card) return;
   card.style.display = "block";
+
+  // Advance workflow ribbon: Complaint, Prediction, Priority, Map active
+  setWorkflowStep(4);
 
   // Target ATM ID & Zone
   const atmEl = document.getElementById("predAtmId");
@@ -1304,6 +1331,7 @@ function setupDispatchModalListeners() {
 
         await loadAlertHistory();
         loadInterventionPerformance();
+        setWorkflowStep(6);
       } catch (err) {
         showToast(`Failed to dispatch patrol: ${err.message}`, "error");
       } finally {
@@ -1503,6 +1531,7 @@ function setupOutcomeModalListeners() {
 
         await loadAlertHistory();
         loadInterventionPerformance();
+        setWorkflowStep(7);
       } catch (err) {
         showToast(`Failed to record outcome: ${err.message}`, "error");
       } finally {

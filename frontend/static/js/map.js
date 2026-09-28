@@ -254,6 +254,44 @@ export const MapController = {
         }
       };
     }
+
+    const resetBtn = document.getElementById("btnResetMapView");
+    if (resetBtn) {
+      resetBtn.onclick = () => this.resetView();
+    }
+
+    const fullBtn = document.getElementById("btnToggleMapFullscreen");
+    if (fullBtn) {
+      fullBtn.onclick = () => this.toggleFullscreen();
+    }
+  },
+
+  resetView() {
+    if (mapInstance) {
+      mapInstance.flyTo([28.6300, 77.2000], 11, { duration: 0.8 });
+      this.filterByZone("ALL");
+      const zoneBtns = document.querySelectorAll(".btn-zone-filter");
+      zoneBtns.forEach(b => {
+        if (b.getAttribute("data-zone") === "ALL") b.classList.add("active");
+        else b.classList.remove("active");
+      });
+      const quickSel = document.getElementById("quickAtmSelect");
+      if (quickSel) quickSel.value = "";
+    }
+  },
+
+  toggleFullscreen() {
+    const mapPanel = document.querySelector(".map-panel");
+    const btn = document.getElementById("btnToggleMapFullscreen");
+    if (!mapPanel) return;
+
+    const isFull = mapPanel.classList.toggle("is-fullscreen");
+    if (btn) {
+      btn.innerHTML = isFull ? "&#x2715; Exit Fullscreen" : "&#x26F6; Fullscreen";
+    }
+    setTimeout(() => {
+      if (mapInstance) mapInstance.invalidateSize();
+    }, 200);
   },
 
   filterByZone(zoneId) {
@@ -305,37 +343,74 @@ export const MapController = {
       radius: 500,
       color: "#dc2626",
       fillColor: "#dc2626",
-      fillOpacity: 0.14,
+      fillOpacity: 0.12,
       weight: 2,
       dashArray: "4, 6",
     });
     group.addLayer(bufferCircle);
 
-    // 2. High-visibility red target marker
-    const targetPin = L.circleMarker([lat, lon], {
-      radius: 11,
+    // Inner 200m cordon
+    const innerCordon = L.circle([lat, lon], {
+      radius: 200,
+      color: "#dc2626",
+      fillColor: "#dc2626",
+      fillOpacity: 0.18,
+      weight: 1.5,
+    });
+    group.addLayer(innerCordon);
+
+    // 2. High-visibility red target marker with Rank 1 badge
+    const targetIcon = L.divIcon({
+      className: "cand-map-icon",
+      html: `<div class="cand-pin-badge rank-1-target" title="Rank #1 Forecast Target: ${escapeHtml(predictedAtmId)}">#1 TARGET</div>`,
+      iconSize: [80, 24],
+      iconAnchor: [40, 12],
+    });
+    const targetMarker = L.marker([lat, lon], { icon: targetIcon });
+    targetMarker.on("click", () => {
+      this.selectATM(target.data, true);
+      target.marker.openPopup();
+    });
+    group.addLayer(targetMarker);
+
+    // Center pin circle
+    const centerPin = L.circleMarker([lat, lon], {
+      radius: 7,
       color: "#ffffff",
       fillColor: "#dc2626",
       fillOpacity: 1,
       weight: 3,
     });
-    group.addLayer(targetPin);
+    group.addLayer(centerPin);
 
-    // 3. Highlight Secondary Candidates (Ranks 2-5)
+    // 3. Highlight Secondary Candidates (Ranks 2-5) with distinguishable colors & rank numbers
+    const RANK_COLORS = {
+      2: { bg: "#ea580c", label: "#2" },
+      3: { bg: "#d97706", label: "#3" },
+      4: { bg: "#0284c7", label: "#4" },
+      5: { bg: "#7c3aed", label: "#5" },
+    };
+
     topCandidates.slice(1).forEach(cand => {
       const candItem = atmMarkers[cand.atm_id];
       if (candItem) {
-        const secondaryMarker = L.circleMarker([candItem.data.latitude, candItem.data.longitude], {
-          radius: 8,
-          color: "#ffffff",
-          fillColor: "#ea580c",
-          fillOpacity: 0.85,
-          weight: 2,
+        const cConfig = RANK_COLORS[cand.rank] || { bg: "#64748b", label: `#${cand.rank}` };
+        const candIcon = L.divIcon({
+          className: "cand-map-icon",
+          html: `<div class="cand-pin-badge rank-secondary" style="background: ${cConfig.bg};" title="Rank #${cand.rank}: ${cand.atm_id} (${(cand.probability * 100).toFixed(1)}%)">${cConfig.label}</div>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
         });
-        secondaryMarker.bindTooltip(`Rank #${cand.rank}: ${cand.atm_id} (${(cand.probability * 100).toFixed(1)}%)`, {
+        const candMarker = L.marker([candItem.data.latitude, candItem.data.longitude], { icon: candIcon });
+        candMarker.bindTooltip(`<b>Rank #${cand.rank}:</b> ${cand.atm_id} (${(cand.probability * 100).toFixed(1)}%)`, {
           direction: "top",
+          offset: [0, -12],
         });
-        group.addLayer(secondaryMarker);
+        candMarker.on("click", () => {
+          this.selectATM(candItem.data, false);
+          candItem.marker.openPopup();
+        });
+        group.addLayer(candMarker);
       }
     });
 

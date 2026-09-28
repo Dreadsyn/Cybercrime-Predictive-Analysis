@@ -61,17 +61,21 @@
       </div>
     </div>
 
-    <!-- 5-Step Operational Workflow Ribbon -->
-    <div class="workflow-ribbon" title="Operational Workflow Progression">
-      <span class="wf-step active">1. Complaint Intake</span>
+    <!-- 7-Step Operational SIH Workflow Ribbon -->
+    <div class="workflow-ribbon" title="Operational Workflow: Complaint -> Prediction -> Priority -> Map -> Convergence -> Dispatch -> Outcome">
+      <span class="wf-step active" id="wfStep1"><span class="wf-num">1</span> Complaint</span>
       <span class="wf-arrow">&rarr;</span>
-      <span class="wf-step active">2. Rail Velocity</span>
+      <span class="wf-step" id="wfStep2"><span class="wf-num">2</span> Prediction</span>
       <span class="wf-arrow">&rarr;</span>
-      <span class="wf-step active">3. Spatial Inference</span>
+      <span class="wf-step" id="wfStep3"><span class="wf-num">3</span> Priority</span>
       <span class="wf-arrow">&rarr;</span>
-      <span class="wf-step active">4. Intercept Window</span>
+      <span class="wf-step" id="wfStep4"><span class="wf-num">4</span> Map</span>
       <span class="wf-arrow">&rarr;</span>
-      <span class="wf-step active">5. Tactical Dispatch</span>
+      <span class="wf-step" id="wfStep5"><span class="wf-num">5</span> Convergence</span>
+      <span class="wf-arrow">&rarr;</span>
+      <span class="wf-step" id="wfStep6"><span class="wf-num">6</span> Dispatch</span>
+      <span class="wf-arrow">&rarr;</span>
+      <span class="wf-step" id="wfStep7"><span class="wf-num">7</span> Outcome</span>
     </div>
   </section>
 
@@ -210,50 +214,70 @@
         </button>
       </form>
 
+      <!-- Initial State Prompt: Ready for Intake -->
+      <div id="forecastCardPlaceholder" class="forecast-placeholder-card">
+        <div class="placeholder-icon">&#128737;</div>
+        <div class="placeholder-title">Awaiting Incident Complaint Intake</div>
+        <div class="placeholder-subtitle">
+          Select an operational scenario preset above or submit complaint parameters to trigger calibrated spatial forecasting, tactical triage, and field patrol routing.
+        </div>
+        <div class="placeholder-chips">
+          <span class="placeholder-chip">&#10003; Calibrated Top-1 ATM Inference</span>
+          <span class="placeholder-chip">&#10003; Empirical IQR Lead Time</span>
+          <span class="placeholder-chip">&#10003; Deterministic 0–100 Priority</span>
+        </div>
+      </div>
+
       <!-- Forecast Output Result Card (Hero Presentation) -->
       <div id="forecastCard" class="forecast-result-card">
         <!-- 1. Hero Alert Header (Urgency & Score) -->
         <div class="hero-alert-header">
           <div class="hero-urgency-cluster">
+            <span id="predCaseIdBadge" class="case-id-badge" style="display:none;"></span>
             <span id="predPriorityBadge" class="priority-tag priority-critical">CRITICAL</span>
             <div class="hero-score-pill">
               <span class="hero-score-label">Priority</span>
               <span id="predPriorityScore" class="hero-score-val">--</span>
               <span class="hero-score-denom">/100</span>
             </div>
-            <span id="predAlertStateBadge" class="alert-state-badge state-new">NEW ALERT</span>
-            <span id="predCaseIdBadge" class="case-id-badge" style="display:none;"></span>
             <span id="predCaseStatusBadge" class="case-status-badge status-new_alert" style="display:none;">NEW_ALERT</span>
+            <span id="predAlertStateBadge" class="alert-state-badge state-new" style="display:none;">NEW ALERT</span>
             <span id="predDispatchBadge" class="dispatch-badge" style="display:none;">READY</span>
             <span id="predOutcomeBadge" class="outcome-badge" style="display:none;">INTERCEPTED</span>
             <span id="predRiskBadge" class="risk-tag risk-critical" style="display:none;">CRITICAL RISK</span>
           </div>
           <div class="hero-header-actions">
-            <button type="button" id="btnCaseTransition" class="btn-case-transition" style="display:none;" title="Advance Case Lifecycle">
-              <span id="caseTransitionText">Dispatch Patrol</span>
+            <button type="button" id="btnFocusTargetMap" class="btn-action-ghost" title="Focus Target ATM on Tactical Map">
+              <span>&#128506; Focus Map</span>
             </button>
-            <button type="button" id="btnRecordOutcome" class="btn-action-ghost" style="display:none;" title="Record Actual Incident Outcome">
-              <span>&#9989; Log Outcome</span>
-            </button>
-            <button type="button" id="btnViewDispatch" class="btn-action-ghost" style="display:none;" title="View Field Dispatch Details">
-              <span>&#128659; Dispatch</span>
-            </button>
-            <div class="evidence-export-container" style="display:inline-block; position:relative;">
-              <button type="button" id="btnExportEvidence" class="btn-action-ghost" style="display:none;" title="Export Structured Case Evidence">
-                <span>&#128190; Evidence &#9662;</span>
-              </button>
-              <div id="evidenceDropdown" class="evidence-dropdown-menu" style="display:none;">
-                <a href="#" id="btnExportJson" class="evidence-menu-item">Download JSON</a>
-                <a href="#" id="btnExportCsv" class="evidence-menu-item">Download CSV</a>
-              </div>
-            </div>
             <button type="button" id="btnCopyDispatch" class="btn-copy-brief" title="Copy Dispatch Brief for Field Patrol">
               <span id="copyBriefIcon">&#128203;</span>
               <span id="copyBriefText">Copy Brief</span>
             </button>
-            <button type="button" id="btnFocusTargetMap" class="btn-action-ghost" title="Focus Target ATM on Tactical Map">
-              <span>&#128506; Focus Map</span>
+          </div>
+        </div>
+
+        <!-- 1b. Dedicated Operational Action Toolbar -->
+        <div class="hero-operational-toolbar">
+          <div class="toolbar-primary-actions">
+            <button type="button" id="btnCaseTransition" class="btn-case-transition" style="display:none;" title="Advance Case Lifecycle">
+              <span id="caseTransitionText">Dispatch Patrol</span>
             </button>
+            <button type="button" id="btnRecordOutcome" class="btn-action-outcome" style="display:none;" title="Record Actual Incident Outcome">
+              <span>&#9989; Log Outcome</span>
+            </button>
+            <button type="button" id="btnViewDispatch" class="btn-action-ghost" style="display:none;" title="View Field Dispatch Details">
+              <span>&#128659; Dispatch Details</span>
+            </button>
+          </div>
+          <div class="evidence-export-container" style="display:inline-block; position:relative;">
+            <button type="button" id="btnExportEvidence" class="btn-action-ghost" style="display:none;" title="Export Structured Case Evidence">
+              <span>&#128190; Export Evidence &#9662;</span>
+            </button>
+            <div id="evidenceDropdown" class="evidence-dropdown-menu" style="display:none;">
+              <a href="#" id="btnExportJson" class="evidence-menu-item">Download JSON</a>
+              <a href="#" id="btnExportCsv" class="evidence-menu-item">Download CSV</a>
+            </div>
           </div>
         </div>
 
@@ -395,9 +419,13 @@
             <button type="button" class="btn-zone-filter" data-zone="ZONE_WEST">West</button>
             <button type="button" class="btn-zone-filter" data-zone="ZONE_EAST">East</button>
           </div>
-          <select id="quickAtmSelect" class="quick-atm-select" title="Quick Jump to ATM">
-            <option value="">Jump to ATM...</option>
-          </select>
+          <div class="map-aux-controls">
+            <select id="quickAtmSelect" class="quick-atm-select" title="Quick Jump to ATM">
+              <option value="">Jump to ATM...</option>
+            </select>
+            <button type="button" id="btnResetMapView" class="btn-map-control" title="Reset View to Metro Overview">&#8635; Reset</button>
+            <button type="button" id="btnToggleMapFullscreen" class="btn-map-control" title="Toggle Fullscreen Map">&#x26F6; Fullscreen</button>
+          </div>
         </div>
       </div>
 
@@ -405,11 +433,12 @@
       <div class="map-wrapper">
         <div id="map" class="leaflet-map-viewport"></div>
         <div class="map-floating-legend">
-          <div class="legend-item"><span class="legend-dot dot-branch"></span> Branch-Attached ATM</div>
-          <div class="legend-item"><span class="legend-dot dot-kiosk"></span> Standalone Kiosk (High Risk)</div>
-          <div class="legend-item"><span class="legend-dot dot-target"></span> Predicted Target (500m Perimeter)</div>
-          <div class="legend-item"><span class="legend-dot dot-conv-atm"></span> Repeated ATM Convergence</div>
-          <div class="legend-item"><span class="legend-dot dot-conv-zone"></span> Zone Corridor Convergence</div>
+          <div class="legend-item"><span class="legend-dot dot-target"></span> Forecast Target (#1)</div>
+          <div class="legend-item"><span class="legend-dot dot-candidate"></span> Candidate ATMs (#2–#5)</div>
+          <div class="legend-item"><span class="legend-dot dot-branch"></span> Branch ATM</div>
+          <div class="legend-item"><span class="legend-dot dot-kiosk"></span> Standalone Kiosk</div>
+          <div class="legend-item"><span class="legend-dot dot-conv-atm"></span> ATM Convergence</div>
+          <div class="legend-item"><span class="legend-dot dot-conv-zone"></span> Zone Convergence</div>
         </div>
       </div>
 
