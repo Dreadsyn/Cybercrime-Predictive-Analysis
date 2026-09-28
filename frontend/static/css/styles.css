@@ -623,6 +623,72 @@ body {
   50% { box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.2); }
 }
 
+/* Operational Case ID & Lifecycle Badges */
+.case-id-badge {
+  font-family: monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  background: #f1f5f9;
+  color: var(--text-main);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-xs);
+  letter-spacing: 0.02em;
+}
+
+.case-status-badge {
+  font-size: 0.66rem;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.case-status-badge.status-new_alert,
+.case-status-badge.status-new {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.case-status-badge.status-patrol_dispatched {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.case-status-badge.status-resolved {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.btn-case-transition {
+  background: var(--accent-teal);
+  border: 1px solid var(--accent-teal-dark);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-case-transition:hover {
+  background: var(--accent-teal-dark);
+}
+
+.btn-case-transition:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .alert-lifecycle-banner {
   display: flex;
   align-items: center;

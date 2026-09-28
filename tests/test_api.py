@@ -15,6 +15,7 @@ Tests:
 
 import asyncio
 import json
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -30,6 +31,7 @@ from backend.app.main import (
     app,
     generate_playbook_endpoint,
     generic_exception_handler,
+    get_case_details,
     get_dashboard_stats,
     get_emerging_clusters,
     get_model_information,
@@ -37,17 +39,27 @@ from backend.app.main import (
     get_zone_hotspots,
     health_check,
     list_atms,
+    list_cases,
     list_complaints,
     list_predictions,
     ml_engine,
     predict_cashout_location,
     serve_dashboard,
+    update_case_status,
     validation_exception_handler,
 )
 from backend.app.alert_engine import (
     evaluate_alert_escalation,
     find_active_alert,
     process_alert_lifecycle,
+)
+from backend.app.case_engine import (
+    VALID_STATUS_TRANSITIONS,
+    create_or_link_case,
+    generate_case_id,
+    get_case_by_id,
+    list_operational_cases,
+    transition_case_status,
 )
 from backend.app.cluster_engine import detect_emerging_clusters
 from backend.app.convergence_engine import (
@@ -58,7 +70,12 @@ from backend.app.convergence_engine import (
 from backend.app.database import get_db_connection, verify_database_readiness
 from backend.app.ml_engine import compute_intervention_priority
 from backend.app.playbook_engine import generate_investigator_playbook
-from backend.app.schemas import ComplaintCreate, PlaybookRequest, PredictionRequest
+from backend.app.schemas import (
+    CaseStatusUpdateRequest,
+    ComplaintCreate,
+    PlaybookRequest,
+    PredictionRequest,
+)
 
 
 def test_health_endpoint():
@@ -793,20 +810,25 @@ def test_convergence_score_helpers_bounds():
 
 @pytest.fixture(autouse=True)
 def clean_alert_test_predictions():
-    """Cleans up isolated test prediction records before and after each test."""
+    """Cleans up isolated test prediction and case records before and after each test."""
+    clean_cases_sql = """
+        DELETE FROM operational_cases 
+        WHERE parent_alert_id IN (
+            SELECT prediction_id FROM predictions
+            WHERE complaint_id != 'CMP-INIT-001'
+        )
+        OR complaint_id != 'CMP-INIT-001';
+    """
     clean_sql = """
         DELETE FROM predictions 
-        WHERE complaint_id LIKE 'CMP-TEST-%' 
-           OR complaint_id LIKE 'CMP-DEDUP-%' 
-           OR complaint_id LIKE 'CMP-SEPARATE-%' 
-           OR complaint_id LIKE 'CMP-SURGE-%' 
-           OR complaint_id LIKE 'CMP-VEL-%' 
-           OR complaint_id LIKE 'CMP-EXP-%';
+        WHERE complaint_id != 'CMP-INIT-001';
     """
     with get_db_connection() as conn:
+        conn.execute(clean_cases_sql)
         conn.execute(clean_sql)
     yield
     with get_db_connection() as conn:
+        conn.execute(clean_cases_sql)
         conn.execute(clean_sql)
 
 
@@ -1307,6 +1329,323 @@ def test_empty_convergence_map_response_structure():
     assert res["convergences"] == []
     assert "window_start" in res
     assert "window_end" in res
+
+
+# ==============================================================================
+# SECTION 11: OPERATIONAL CASE IDS & CASE LIFECYCLE TESTS
+# ==============================================================================
+
+def test_case_creation_on_new_alert():
+    """
+    Verifies that generating a prediction/alert generates a unique operational Case ID
+    in the format CASE-YYYYMMDD-HEX and establishes the initial status NEW_ALERT.
+    """
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=75000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=20.0,
+        incident_hour=14,
+        incident_day_of_week=3,
+        complaint_id="CMP-TEST-CASE-NEW-01",
+    )
+    res = predict_cashout_location(req)
+    assert res.get("case_id") is not None
+    assert re.match(r"^CASE-\d{8}-[A-F0-9]{6}$", res["case_id"])
+    assert res.get("case_status") == "NEW_ALERT"
+
+
+def test_case_linking_metadata():
+    """
+    Verifies that the created case is persisted and accurately linked to its
+    originating complaint, prediction, alert, predicted ATM, zone, priority score,
+    priority level, and intervention window.
+    """
+    req = PredictionRequest(
+        crime_category="PHISHING_UPI",
+        reported_amount=60000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_HDFC_SYNTH",
+        mule_account_tier="STANDARD",
+        mule_branch_zone="ZONE_NORTH",
+        reporting_delay_mins=15.0,
+        incident_hour=11,
+        incident_day_of_week=2,
+        complaint_id="CMP-TEST-CASE-LINK-01",
+    )
+    res = predict_cashout_location(req)
+    case_id = res.get("case_id")
+    assert case_id is not None
+
+    with get_db_connection() as conn:
+        case_row = get_case_by_id(conn, case_id)
+        assert case_row is not None
+        assert case_row["case_id"] == case_id
+        assert case_row["complaint_id"] == res.get("complaint_id")
+        parent_id = res.get("alert_id") or res.get("prediction_id")
+        assert case_row["parent_alert_id"] == parent_id
+        assert case_row["predicted_atm_id"] == res.get("predicted_atm_id")
+        assert case_row["predicted_zone_id"] == res.get("predicted_zone_id")
+        assert case_row["priority_score"] == res.get("priority_score")
+        assert case_row["priority_level"] == res.get("priority_level")
+        assert case_row["intervention_window_start"] == res.get("predicted_window_start")
+        assert case_row["intervention_window_end"] == res.get("predicted_window_end")
+        assert case_row["case_status"] == "NEW_ALERT"
+        assert case_row["created_timestamp"] is not None
+
+
+def test_case_duplicate_prevention_on_deduplication():
+    """
+    Verifies that when alert deduplication identifies the same underlying alert
+    (REFRESHED or ESCALATED), it reuses the existing Case ID rather than creating
+    a duplicate case in the operational_cases table.
+    """
+    ts_base = "2026-09-28 10:00:00"
+    ts_later = "2026-09-28 11:30:00"
+
+    with get_db_connection() as conn:
+        # First alert -> Creates Case 1
+        res1 = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-CASE-DEDUP-01",
+                "predicted_atm_id": "ATM-NO-020",
+                "predicted_zone_id": "ZONE_NORTH",
+                "confidence_score": 0.45,
+                "top_candidates": [],
+                "predicted_window_start": ts_base,
+                "predicted_window_end": ts_base,
+                "risk_level": "HIGH",
+                "explanation_codes": [],
+                "priority_score": 65,
+                "priority_level": "HIGH",
+                "priority_reasons": [],
+                "playbook": None,
+                "reference_timestamp": ts_base,
+            },
+            window_hours=24,
+        )
+        case_id_1 = res1.get("case_id")
+        assert case_id_1 is not None
+        assert res1["alert_state"] == "NEW"
+
+        # Count total cases with this case_id
+        count1 = conn.execute(
+            "SELECT COUNT(*) FROM operational_cases WHERE case_id = ?;", (case_id_1,)
+        ).fetchone()[0]
+        assert count1 == 1
+
+        # Second incident within window targeting same ATM -> Refreshed/Escalated alert
+        res2 = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-CASE-DEDUP-02",
+                "predicted_atm_id": "ATM-NO-020",
+                "predicted_zone_id": "ZONE_NORTH",
+                "confidence_score": 0.48,
+                "top_candidates": [],
+                "predicted_window_start": ts_later,
+                "predicted_window_end": ts_later,
+                "risk_level": "HIGH",
+                "explanation_codes": [],
+                "priority_score": 70,
+                "priority_level": "HIGH",
+                "priority_reasons": [],
+                "playbook": None,
+                "reference_timestamp": ts_later,
+            },
+            window_hours=24,
+        )
+        case_id_2 = res2.get("case_id")
+        assert res2["alert_state"] in ("REFRESHED", "ESCALATED")
+        # Must reuse the same case_id
+        assert case_id_2 == case_id_1
+
+        # Verify no duplicate case was inserted into operational_cases
+        count2 = conn.execute(
+            "SELECT COUNT(*) FROM operational_cases WHERE case_id = ?;", (case_id_1,)
+        ).fetchone()[0]
+        assert count2 == 1
+
+
+def test_valid_case_lifecycle_transitions():
+    """
+    Verifies valid lifecycle progression:
+    NEW_ALERT -> PATROL_DISPATCHED -> RESOLVED
+    and ensures status, updated timestamp, and audit notes are persisted.
+    """
+    # Create new case
+    with get_db_connection() as conn:
+        res = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-TRANS-01",
+                "predicted_atm_id": "ATM-SO-021",
+                "predicted_zone_id": "ZONE_SOUTH",
+                "confidence_score": 0.35,
+                "top_candidates": [],
+                "predicted_window_start": "2026-09-28 12:00:00",
+                "predicted_window_end": "2026-09-28 14:00:00",
+                "risk_level": "MODERATE",
+                "explanation_codes": [],
+                "priority_score": 50,
+                "priority_level": "MEDIUM",
+                "priority_reasons": [],
+                "playbook": None,
+                "reference_timestamp": "2026-09-28 12:00:00",
+            },
+            window_hours=24,
+        )
+        case_id = res["case_id"]
+        assert res["case_status"] == "NEW_ALERT"
+
+    # Transition 1: NEW_ALERT -> PATROL_DISPATCHED
+    update_res1 = update_case_status(
+        case_id=case_id,
+        request=CaseStatusUpdateRequest(
+            status="PATROL_DISPATCHED",
+            notes="Unit 4 dispatched to perimeter",
+        ),
+    )
+    assert update_res1["case_status"] == "PATROL_DISPATCHED"
+    assert "Unit 4 dispatched" in (update_res1["notes"] or "")
+
+    # Transition 2: PATROL_DISPATCHED -> RESOLVED
+    update_res2 = update_case_status(
+        case_id=case_id,
+        request=CaseStatusUpdateRequest(
+            status="RESOLVED",
+            notes="Perimeter secured; cash-out deterred",
+        ),
+    )
+    assert update_res2["case_status"] == "RESOLVED"
+    assert "deterred" in (update_res2["notes"] or "")
+
+    # Verify DB persistence
+    with get_db_connection() as conn:
+        persisted = get_case_by_id(conn, case_id)
+        assert persisted["case_status"] == "RESOLVED"
+        assert persisted["updated_timestamp"] is not None
+
+
+def test_invalid_case_lifecycle_transitions():
+    """
+    Verifies that illegal status transitions are rejected with HTTP 400:
+    - NEW_ALERT -> RESOLVED (direct skipping)
+    - NEW_ALERT -> NEW_ALERT (same status)
+    - RESOLVED -> PATROL_DISPATCHED (re-opening/backward)
+    - Any unknown status string
+    - Non-existent case ID produces HTTP 404
+    """
+    with get_db_connection() as conn:
+        res = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-INV-TRANS-01",
+                "predicted_atm_id": "ATM-WE-041",
+                "predicted_zone_id": "ZONE_WEST",
+                "confidence_score": 0.40,
+                "top_candidates": [],
+                "predicted_window_start": "2026-09-28 09:00:00",
+                "predicted_window_end": "2026-09-28 11:00:00",
+                "risk_level": "MODERATE",
+                "explanation_codes": [],
+                "priority_score": 55,
+                "priority_level": "MEDIUM",
+                "priority_reasons": [],
+                "playbook": None,
+                "reference_timestamp": "2026-09-28 09:00:00",
+            },
+            window_hours=24,
+        )
+        case_id = res["case_id"]
+
+    # 1. Illegal transition: NEW_ALERT directly to RESOLVED
+    with pytest.raises(HTTPException) as exc_info:
+        update_case_status(case_id, CaseStatusUpdateRequest(status="RESOLVED"))
+    assert exc_info.value.status_code == 400
+    assert "Invalid lifecycle transition" in exc_info.value.detail
+
+    # 2. Illegal transition: NEW_ALERT to NEW_ALERT (same state)
+    with pytest.raises(HTTPException) as exc_info:
+        update_case_status(case_id, CaseStatusUpdateRequest(status="NEW_ALERT"))
+    assert exc_info.value.status_code == 400
+
+    # 3. Advance to PATROL_DISPATCHED, then RESOLVED
+    update_case_status(case_id, CaseStatusUpdateRequest(status="PATROL_DISPATCHED"))
+    update_case_status(case_id, CaseStatusUpdateRequest(status="RESOLVED"))
+
+    # 4. Illegal transition: from RESOLVED back to PATROL_DISPATCHED
+    with pytest.raises(HTTPException) as exc_info:
+        update_case_status(case_id, CaseStatusUpdateRequest(status="PATROL_DISPATCHED"))
+    assert exc_info.value.status_code == 400
+    assert "Terminal state" in exc_info.value.detail or "Invalid lifecycle transition" in exc_info.value.detail
+
+    # 5. Invalid status string
+    with pytest.raises(HTTPException) as exc_info:
+        update_case_status(case_id, CaseStatusUpdateRequest(status="DISMISSED"))
+    assert exc_info.value.status_code == 400
+
+    # 6. Non-existent case ID -> HTTP 404
+    with pytest.raises(HTTPException) as exc_info:
+        update_case_status("CASE-99999999-000000", CaseStatusUpdateRequest(status="PATROL_DISPATCHED"))
+    assert exc_info.value.status_code == 404
+
+
+def test_get_case_and_list_cases_endpoints():
+    """
+    Verifies GET /api/cases and GET /api/cases/{case_id} REST endpoints,
+    including filtering by status, limit handling, and 404 for non-existent cases.
+    """
+    # 0. Ensure at least one case exists
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=70000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=20.0,
+        incident_hour=14,
+        incident_day_of_week=3,
+        complaint_id="CMP-TEST-CASE-LIST-01",
+    )
+    pred_res = predict_cashout_location(req)
+    created_case_id = pred_res.get("case_id")
+    assert created_case_id is not None
+
+    # 1. List cases
+    all_cases = list_cases(limit=10)
+    assert isinstance(all_cases, list)
+    assert len(all_cases) > 0
+
+    first_case = all_cases[0]
+    assert "case_id" in first_case
+    assert "case_status" in first_case
+    assert "priority_score" in first_case
+
+    # 2. Get specific case
+    case_detail = get_case_details(created_case_id)
+    assert case_detail["case_id"] == created_case_id
+    assert case_detail["predicted_atm_id"] == pred_res.get("predicted_atm_id")
+
+    # 3. Filter cases by status
+    update_case_status(created_case_id, CaseStatusUpdateRequest(status="PATROL_DISPATCHED"))
+    update_case_status(created_case_id, CaseStatusUpdateRequest(status="RESOLVED"))
+
+    resolved_cases = list_cases(status="RESOLVED", limit=10)
+    assert isinstance(resolved_cases, list)
+    assert len(resolved_cases) > 0
+    for c in resolved_cases:
+        assert c["case_status"] == "RESOLVED"
+
+    # 4. Non-existent case -> 404
+    with pytest.raises(HTTPException) as exc_info:
+        get_case_details("CASE-00000000-NONEXIST")
+    assert exc_info.value.status_code == 404
 
 
 

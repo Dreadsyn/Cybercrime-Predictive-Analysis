@@ -103,5 +103,25 @@ export const API = {
     const qs = q.toString();
     return await request(`/analytics/convergences${qs ? `?${qs}` : ""}`);
   },
+
+  // 10. Operational Case Lifecycle Management
+  async getCases(params = {}) {
+    const q = new URLSearchParams();
+    if (params.status) q.append("status", params.status);
+    if (params.limit) q.append("limit", params.limit);
+    const qs = q.toString();
+    return await request(`/cases${qs ? `?${qs}` : ""}`);
+  },
+
+  async getCase(caseId) {
+    return await request(`/cases/${encodeURIComponent(caseId)}`);
+  },
+
+  async updateCaseStatus(caseId, status, notes = "") {
+    return await request(`/cases/${encodeURIComponent(caseId)}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, notes }),
+    });
+  },
 };
 

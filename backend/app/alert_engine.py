@@ -229,7 +229,7 @@ def process_alert_lifecycle(
             ),
         )
 
-        return {
+        res_dict = {
             "prediction_id": prediction_id,
             "complaint_id": prediction_candidate.get("complaint_id", ""),
             "prediction_timestamp": active_ts,
@@ -251,6 +251,11 @@ def process_alert_lifecycle(
             "escalation_reason": escalation_reason,
             "parent_alert_id": None,
         }
+        from backend.app.case_engine import create_or_link_case
+        case_id, case_status = create_or_link_case(db_conn, res_dict)
+        res_dict["case_id"] = case_id
+        res_dict["case_status"] = case_status
+        return res_dict
 
     # --------------------------------------------------------------------------
     # CASE 2: Active Alert Exists -> Evaluate Escalation vs. Refresh
@@ -343,7 +348,7 @@ def process_alert_lifecycle(
             ),
         )
 
-        return {
+        res_dict = {
             "prediction_id": existing_id,
             "complaint_id": prediction_candidate.get("complaint_id") or active_alert.get("complaint_id", ""),
             "prediction_timestamp": active_ts,
@@ -363,8 +368,13 @@ def process_alert_lifecycle(
             "alert_state": alert_state,
             "occurrence_count": new_count,
             "escalation_reason": escalation_reason,
-            "parent_alert_id": None,
+            "parent_alert_id": existing_id,
         }
+        from backend.app.case_engine import create_or_link_case
+        case_id, case_status = create_or_link_case(db_conn, res_dict)
+        res_dict["case_id"] = case_id
+        res_dict["case_status"] = case_status
+        return res_dict
 
     else:
         # ----------------------------------------------------------------------
@@ -413,7 +423,7 @@ def process_alert_lifecycle(
             ),
         )
 
-        return {
+        res_dict = {
             "prediction_id": existing_id,
             "complaint_id": prediction_candidate.get("complaint_id") or active_alert.get("complaint_id", ""),
             "prediction_timestamp": active_ts,
@@ -433,5 +443,10 @@ def process_alert_lifecycle(
             "alert_state": alert_state,
             "occurrence_count": new_count,
             "escalation_reason": escalation_reason,
-            "parent_alert_id": None,
+            "parent_alert_id": existing_id,
         }
+        from backend.app.case_engine import create_or_link_case
+        case_id, case_status = create_or_link_case(db_conn, res_dict)
+        res_dict["case_id"] = case_id
+        res_dict["case_status"] = case_status
+        return res_dict

@@ -222,9 +222,14 @@
               <span class="hero-score-denom">/100</span>
             </div>
             <span id="predAlertStateBadge" class="alert-state-badge state-new">NEW ALERT</span>
+            <span id="predCaseIdBadge" class="case-id-badge" style="display:none;"></span>
+            <span id="predCaseStatusBadge" class="case-status-badge status-new_alert" style="display:none;">NEW_ALERT</span>
             <span id="predRiskBadge" class="risk-tag risk-critical" style="display:none;">CRITICAL RISK</span>
           </div>
           <div class="hero-header-actions">
+            <button type="button" id="btnCaseTransition" class="btn-case-transition" style="display:none;" title="Advance Case Lifecycle">
+              <span id="caseTransitionText">Dispatch Patrol</span>
+            </button>
             <button type="button" id="btnCopyDispatch" class="btn-copy-brief" title="Copy Dispatch Brief for Field Patrol">
               <span id="copyBriefIcon">&#128203;</span>
               <span id="copyBriefText">Copy Brief</span>
@@ -477,11 +482,12 @@
           <thead>
             <tr>
               <th>Timestamp</th>
+              <th>Case ID</th>
               <th>Predicted Target</th>
               <th>Alert State</th>
+              <th>Case Status</th>
               <th>Jurisdiction Zone</th>
-              <th>Operational Risk</th>
-              <th>Patrol Status</th>
+              <th>Priority</th>
             </tr>
           </thead>
           <tbody id="alertHistoryBody">

@@ -280,6 +280,29 @@ class PredictionResponse(BaseModel):
     occurrence_count: int = Field(default=1, description="Number of incidents mapped to this operational alert")
     escalation_reason: Optional[str] = Field(default="", description="Rationale explaining alert refresh or escalation")
     parent_alert_id: Optional[str] = Field(default=None, description="Primary active alert ID if linked or deduplicated")
+    case_id: Optional[str] = Field(default=None, description="Unique linked operational case identifier")
+    case_status: Optional[str] = Field(default="NEW_ALERT", description="Current operational case lifecycle status: NEW_ALERT, PATROL_DISPATCHED, RESOLVED")
+
+
+class CaseResponse(BaseModel):
+    case_id: str
+    parent_alert_id: str
+    complaint_id: Optional[str] = None
+    predicted_atm_id: str
+    predicted_zone_id: str
+    priority_score: int
+    priority_level: str
+    intervention_window_start: str
+    intervention_window_end: str
+    case_status: str
+    created_timestamp: str
+    updated_timestamp: str
+    notes: Optional[str] = ""
+
+
+class CaseStatusUpdateRequest(BaseModel):
+    status: str = Field(..., description="Target operational case lifecycle status: PATROL_DISPATCHED or RESOLVED")
+    notes: Optional[str] = Field(default="", description="Operational dispatcher remarks or patrol unit logs")
 
 
 class PlaybookRequest(BaseModel):

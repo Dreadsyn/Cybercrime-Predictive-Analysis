@@ -76,7 +76,29 @@ CREATE TABLE IF NOT EXISTS predictions (
     occurrence_count INTEGER DEFAULT 1,
     escalation_reason TEXT DEFAULT '',
     parent_alert_id VARCHAR(32) DEFAULT NULL,
+    case_id VARCHAR(32) DEFAULT NULL,
+    case_status VARCHAR(30) DEFAULT 'NEW_ALERT',
     FOREIGN KEY (predicted_atm_id) REFERENCES atm_locations (atm_id)
+);
+"""
+
+SQL_CREATE_OPERATIONAL_CASES = """
+CREATE TABLE IF NOT EXISTS operational_cases (
+    case_id VARCHAR(32) PRIMARY KEY,
+    parent_alert_id VARCHAR(32) NOT NULL,
+    complaint_id VARCHAR(32),
+    predicted_atm_id VARCHAR(32) NOT NULL,
+    predicted_zone_id VARCHAR(50) NOT NULL,
+    priority_score INTEGER NOT NULL DEFAULT 0,
+    priority_level VARCHAR(20) NOT NULL DEFAULT 'LOW',
+    intervention_window_start TEXT NOT NULL,
+    intervention_window_end TEXT NOT NULL,
+    case_status VARCHAR(30) NOT NULL DEFAULT 'NEW_ALERT',
+    created_timestamp TEXT NOT NULL,
+    updated_timestamp TEXT NOT NULL,
+    notes TEXT DEFAULT '',
+    FOREIGN KEY (predicted_atm_id) REFERENCES atm_locations (atm_id),
+    FOREIGN KEY (parent_alert_id) REFERENCES predictions (prediction_id)
 );
 """
 
@@ -85,4 +107,5 @@ ALL_TABLE_DDL = [
     SQL_CREATE_COMPLAINTS,
     SQL_CREATE_CASHOUT_EVENTS,
     SQL_CREATE_PREDICTIONS,
+    SQL_CREATE_OPERATIONAL_CASES,
 ]

@@ -41,7 +41,7 @@ def get_db_connection():
         conn.close()
 
 
-REQUIRED_OPERATIONAL_TABLES = {"atm_locations", "complaints", "cash_out_events", "predictions"}
+REQUIRED_OPERATIONAL_TABLES = {"atm_locations", "complaints", "cash_out_events", "predictions", "operational_cases"}
 
 
 def verify_database_readiness(conn) -> tuple[bool, str]:
@@ -62,11 +62,14 @@ def verify_database_readiness(conn) -> tuple[bool, str]:
 
 
 def ensure_db_schema():
-    """Ensures newly added columns exist in predictions table for backwards compatibility."""
+    """Ensures operational_cases table and newly added columns exist for backwards compatibility."""
     if not DB_PATH.exists():
         return
     with get_db_connection() as conn:
         cur = conn.cursor()
+        from backend.app.models import SQL_CREATE_OPERATIONAL_CASES
+        cur.execute(SQL_CREATE_OPERATIONAL_CASES)
+
         cur.execute("PRAGMA table_info(predictions);")
         existing_cols = {row["name"] for row in cur.fetchall()}
         if existing_cols:
@@ -86,6 +89,10 @@ def ensure_db_schema():
                 cur.execute("ALTER TABLE predictions ADD COLUMN escalation_reason TEXT DEFAULT '';")
             if "parent_alert_id" not in existing_cols:
                 cur.execute("ALTER TABLE predictions ADD COLUMN parent_alert_id VARCHAR(32) DEFAULT NULL;")
+            if "case_id" not in existing_cols:
+                cur.execute("ALTER TABLE predictions ADD COLUMN case_id VARCHAR(32) DEFAULT NULL;")
+            if "case_status" not in existing_cols:
+                cur.execute("ALTER TABLE predictions ADD COLUMN case_status VARCHAR(30) DEFAULT 'NEW_ALERT';")
 
 
 def init_db():

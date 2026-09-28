@@ -38,8 +38,15 @@ from backend.app.convergence_engine import detect_repeated_convergence
 from backend.app.database import ensure_db_schema, get_db_connection, verify_database_readiness
 from backend.app.ml_engine import ml_engine
 from backend.app.playbook_engine import generate_investigator_playbook
+from backend.app.case_engine import (
+    get_case_by_id,
+    list_operational_cases,
+    transition_case_status,
+)
 from backend.app.schemas import (
     ATMLocationResponse,
+    CaseResponse,
+    CaseStatusUpdateRequest,
     ClusterResponse,
     ComplaintResponse,
     ConvergenceResponse,
@@ -441,8 +448,54 @@ def list_predictions(limit: int = Query(25, ge=1, le=100)):
         d["occurrence_count"] = d.get("occurrence_count", 1) or 1
         d["escalation_reason"] = d.get("escalation_reason", "") or ""
         d["parent_alert_id"] = d.get("parent_alert_id", None)
+        d["case_id"] = d.get("case_id", None)
+        d["case_status"] = d.get("case_status", "NEW_ALERT") or "NEW_ALERT"
         results.append(d)
     return results
+
+
+# ==============================================================================
+# 5. OPERATIONAL CASE LIFECYCLE MANAGEMENT ENDPOINTS
+# ==============================================================================
+@app.get("/api/cases", response_model=List[CaseResponse], tags=["Case Management"])
+def list_cases(
+    status: Optional[str] = Query(None, description="Optional status filter: NEW_ALERT, PATROL_DISPATCHED, RESOLVED"),
+    limit: int = Query(25, ge=1, le=100),
+):
+    """Retrieves operational cases generated from predictive alerts."""
+    actual_status = status if isinstance(status, str) else getattr(status, "default", None)
+    if not isinstance(actual_status, str):
+        actual_status = None
+    actual_limit = limit if isinstance(limit, int) else getattr(limit, "default", 25)
+    with get_db_connection() as conn:
+        cases = list_operational_cases(conn, case_status=actual_status, limit=actual_limit)
+    return cases
+
+
+@app.get("/api/cases/{case_id}", response_model=CaseResponse, tags=["Case Management"])
+def get_case_details(case_id: str):
+    """Retrieves details of a specific operational case."""
+    with get_db_connection() as conn:
+        case = get_case_by_id(conn, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Operational case '{case_id}' not found.")
+    return case
+
+
+@app.patch("/api/cases/{case_id}/status", response_model=CaseResponse, tags=["Case Management"])
+def update_case_status(case_id: str, request: CaseStatusUpdateRequest):
+    """Executes valid lifecycle transition: NEW_ALERT -> PATROL_DISPATCHED -> RESOLVED."""
+    with get_db_connection() as conn:
+        updated = transition_case_status(conn, case_id, request.status, request.notes)
+    return updated
+
+
+@app.post("/api/cases/{case_id}/transition", response_model=CaseResponse, tags=["Case Management"])
+def transition_case_endpoint(case_id: str, request: CaseStatusUpdateRequest):
+    """Convenience alias for case lifecycle transition."""
+    with get_db_connection() as conn:
+        updated = transition_case_status(conn, case_id, request.status, request.notes)
+    return updated
 
 
 @app.post("/api/playbook", response_model=InvestigatorPlaybook, status_code=status.HTTP_200_OK, tags=["Predictive Analytics"])

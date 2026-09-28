@@ -470,6 +470,85 @@ function renderPredictionResult(result) {
     }
   }
 
+  // Operational Case Lifecycle (Feature: Case IDs + Case Lifecycle)
+  const caseIdBadge = document.getElementById("predCaseIdBadge");
+  const caseStatusBadge = document.getElementById("predCaseStatusBadge");
+  const btnTransition = document.getElementById("btnCaseTransition");
+  const transitionText = document.getElementById("caseTransitionText");
+
+  function updateCaseControls(caseId, status) {
+    if (caseIdBadge) {
+      if (caseId) {
+        caseIdBadge.innerText = caseId;
+        caseIdBadge.style.display = "inline-flex";
+      } else {
+        caseIdBadge.style.display = "none";
+      }
+    }
+    if (caseStatusBadge) {
+      if (status) {
+        caseStatusBadge.innerText = status;
+        caseStatusBadge.className = `case-status-badge status-${status.toLowerCase()}`;
+        caseStatusBadge.style.display = "inline-block";
+      } else {
+        caseStatusBadge.style.display = "none";
+      }
+    }
+    if (btnTransition && transitionText) {
+      if (!caseId || status === "RESOLVED") {
+        if (status === "RESOLVED") {
+          btnTransition.style.display = "inline-flex";
+          btnTransition.disabled = true;
+          btnTransition.style.opacity = "0.6";
+          btnTransition.style.cursor = "default";
+          transitionText.innerText = "✓ Resolved";
+        } else {
+          btnTransition.style.display = "none";
+        }
+      } else if (status === "NEW_ALERT") {
+        btnTransition.style.display = "inline-flex";
+        btnTransition.disabled = false;
+        btnTransition.style.opacity = "1";
+        btnTransition.style.cursor = "pointer";
+        transitionText.innerText = "Dispatch Patrol";
+      } else if (status === "PATROL_DISPATCHED") {
+        btnTransition.style.display = "inline-flex";
+        btnTransition.disabled = false;
+        btnTransition.style.opacity = "1";
+        btnTransition.style.cursor = "pointer";
+        transitionText.innerText = "Resolve Case";
+      }
+    }
+  }
+
+  updateCaseControls(result.case_id, result.case_status);
+
+  if (btnTransition) {
+    btnTransition.onclick = async () => {
+      const currentStatus = result.case_status || "NEW_ALERT";
+      let nextStatus = null;
+      if (currentStatus === "NEW_ALERT") {
+        nextStatus = "PATROL_DISPATCHED";
+      } else if (currentStatus === "PATROL_DISPATCHED") {
+        nextStatus = "RESOLVED";
+      }
+      if (!nextStatus || !result.case_id) return;
+
+      btnTransition.disabled = true;
+      if (transitionText) transitionText.innerText = "Updating...";
+      try {
+        const updateResp = await API.updateCaseStatus(result.case_id, nextStatus, "Status transitioned from tactical UI");
+        result.case_status = updateResp.case_status;
+        updateCaseControls(result.case_id, result.case_status);
+        showToast(`Case ${result.case_id} transitioned to ${nextStatus}`, "success");
+        await loadAlertHistory();
+      } catch (err) {
+        showToast(`Failed to update case status: ${err.message}`, "error");
+        updateCaseControls(result.case_id, result.case_status);
+      }
+    };
+  }
+
   // Intervention Window (HH:MM – HH:MM)
   if (windowEl && result.predicted_window_start && result.predicted_window_end) {
     const startTime = result.predicted_window_start.substring(11, 16);
@@ -619,6 +698,18 @@ function renderPredictionResult(result) {
 }
 
 /**
+ * Fetch and refresh recent alerts.
+ */
+async function loadAlertHistory() {
+  try {
+    const predictions = await API.getPredictions(10);
+    renderAlertHistory(predictions);
+  } catch (err) {
+    console.error("Failed to load alert history:", err);
+  }
+}
+
+/**
  * Render recent prediction alerts to the dispatch audit log.
  */
 function renderAlertHistory(predictions) {
@@ -626,7 +717,7 @@ function renderAlertHistory(predictions) {
   if (!container) return;
 
   if (!predictions || predictions.length === 0) {
-    container.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 12px;">No recent alerts generated.</td></tr>`;
+    container.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 12px;">No recent alerts generated.</td></tr>`;
     return;
   }
 
@@ -637,19 +728,25 @@ function renderAlertHistory(predictions) {
       const state = (p.alert_state || "NEW").toUpperCase();
       const occCount = p.occurrence_count || 1;
       const stateBadge = `<span class="alert-state-badge state-${state.toLowerCase()}" title="${escapeHtml(p.escalation_reason || '')}">${state}${occCount > 1 ? ` (${occCount}x)` : ""}</span>`;
+      const caseStatus = (p.case_status || "NEW_ALERT").toUpperCase();
+      const caseBadge = p.case_id 
+        ? `<span class="case-id-badge">${escapeHtml(p.case_id)}</span>` 
+        : `<span style="color: var(--text-dim); font-size: 0.72rem;">—</span>`;
+      const statusBadge = `<span class="case-status-badge status-${caseStatus.toLowerCase()}">${caseStatus}</span>`;
 
       return `
       <tr>
-        <td><small style="color: var(--text-muted); font-family: monospace;">${p.prediction_timestamp.substring(11, 19)}</small></td>
+        <td><small style="color: var(--text-muted); font-family: monospace;">${p.prediction_timestamp ? p.prediction_timestamp.substring(11, 19) : ""}</small></td>
+        <td>${caseBadge}</td>
         <td><b style="color: var(--accent-blue);">${p.predicted_atm_id}</b></td>
         <td>${stateBadge}</td>
+        <td>${statusBadge}</td>
         <td>${p.predicted_zone_id.replace("ZONE_", "")}</td>
         <td>
           <span class="priority-tag priority-${pLevel.toLowerCase()}">
             ${pScore !== null ? `${pScore} · ` : ""}${pLevel}
           </span>
         </td>
-        <td><span style="font-size: 0.72rem; color: var(--risk-low); font-weight: 700; letter-spacing: 0.04em;">DISPATCH READY</span></td>
       </tr>
     `;
     })
