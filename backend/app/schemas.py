@@ -276,6 +276,10 @@ class PredictionResponse(BaseModel):
     priority_level: str = Field(..., description="Operational triage level: LOW, MEDIUM, HIGH, CRITICAL")
     priority_reasons: List[str] = Field(default_factory=list, description="2-4 concise reasons explaining the score")
     playbook: Optional[InvestigatorPlaybook] = None
+    alert_state: str = Field(default="NEW", description="Alert lifecycle state: NEW, REFRESHED, ESCALATED")
+    occurrence_count: int = Field(default=1, description="Number of incidents mapped to this operational alert")
+    escalation_reason: Optional[str] = Field(default="", description="Rationale explaining alert refresh or escalation")
+    parent_alert_id: Optional[str] = Field(default=None, description="Primary active alert ID if linked or deduplicated")
 
 
 class PlaybookRequest(BaseModel):

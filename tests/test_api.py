@@ -44,6 +44,11 @@ from backend.app.main import (
     serve_dashboard,
     validation_exception_handler,
 )
+from backend.app.alert_engine import (
+    evaluate_alert_escalation,
+    find_active_alert,
+    process_alert_lifecycle,
+)
 from backend.app.cluster_engine import detect_emerging_clusters
 from backend.app.convergence_engine import (
     compute_atm_convergence_score,
@@ -780,6 +785,391 @@ def test_convergence_score_helpers_bounds():
     assert 0 <= z_score_lo <= 100
     assert z_score_lo < 35
     assert z_sev_lo == "MODERATE"
+
+
+# ==============================================================================
+# 9. ALERT DEDUPLICATION & ESCALATION TESTS
+# ==============================================================================
+
+@pytest.fixture(autouse=True)
+def clean_alert_test_predictions():
+    """Cleans up isolated test prediction records before and after each test."""
+    clean_sql = """
+        DELETE FROM predictions 
+        WHERE complaint_id LIKE 'CMP-TEST-%' 
+           OR complaint_id LIKE 'CMP-DEDUP-%' 
+           OR complaint_id LIKE 'CMP-SEPARATE-%' 
+           OR complaint_id LIKE 'CMP-SURGE-%' 
+           OR complaint_id LIKE 'CMP-VEL-%' 
+           OR complaint_id LIKE 'CMP-EXP-%';
+    """
+    with get_db_connection() as conn:
+        conn.execute(clean_sql)
+    yield
+    with get_db_connection() as conn:
+        conn.execute(clean_sql)
+
+
+def test_new_alert_lifecycle_initial():
+    """Verifies that an initial predictive inference creates a NEW alert with occurrence count 1."""
+    # Ensure fresh ATM target by creating a mock payload
+    payload = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=80000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=25.0,
+        incident_hour=15,
+        incident_day_of_week=4,
+        complaint_timestamp="2026-09-20 10:00:00",
+        complaint_id="CMP-TEST-NEW-01",
+    )
+    res = predict_cashout_location(payload)
+    assert res["alert_state"] in ("NEW", "REFRESHED", "ESCALATED")
+    assert res["occurrence_count"] >= 1
+    assert "prediction_id" in res
+    assert res["prediction_id"].startswith("PRED-")
+
+
+def test_alert_deduplication_refreshed_on_subsequent_incident():
+    """
+    Verifies that a subsequent prediction on the same ATM within the active window
+    is deduplicated, refreshing the existing alert and incrementing occurrence_count
+    without artificial score inflation.
+    """
+    ts_base = "2026-09-18 09:00:00"
+    ts_later = "2026-09-18 10:30:00"
+
+    with get_db_connection() as conn:
+        # 1. First event
+        res1 = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-DEDUP-01",
+                "predicted_atm_id": "ATM-WE-048",
+                "predicted_zone_id": "ZONE_WEST",
+                "confidence_score": 0.42,
+                "top_candidates": [],
+                "predicted_window_start": "2026-09-18 09:30:00",
+                "predicted_window_end": "2026-09-18 10:30:00",
+                "risk_level": "MODERATE",
+                "explanation_codes": ["EXP_CHANNEL_UPI"],
+                "priority_score": 45,
+                "priority_level": "MEDIUM",
+                "priority_reasons": ["Moderate loss amount"],
+                "playbook": None,
+                "reference_timestamp": ts_base,
+            },
+            window_hours=24,
+        )
+        assert res1["alert_state"] == "NEW"
+        assert res1["action_status"] == "NEW_ALERT"
+        assert res1["occurrence_count"] == 1
+        initial_id = res1["prediction_id"]
+
+        # 2. Second event targeting same ATM with similar/lower priority
+        res2 = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-DEDUP-02",
+                "predicted_atm_id": "ATM-WE-048",
+                "predicted_zone_id": "ZONE_WEST",
+                "confidence_score": 0.40,
+                "top_candidates": [],
+                "predicted_window_start": "2026-09-18 11:00:00",
+                "predicted_window_end": "2026-09-18 12:00:00",
+                "risk_level": "MODERATE",
+                "explanation_codes": ["EXP_CHANNEL_UPI"],
+                "priority_score": 44,
+                "priority_level": "MEDIUM",
+                "priority_reasons": ["Moderate loss amount"],
+                "playbook": None,
+                "reference_timestamp": ts_later,
+            },
+            window_hours=24,
+        )
+        assert res2["prediction_id"] == initial_id  # Reused primary alert ID
+        assert res2["alert_state"] == "REFRESHED"
+        assert res2["action_status"] == "REFRESHED_ALERT"
+        assert res2["occurrence_count"] == 2
+        assert res2["priority_score"] == 45  # Retained stable score without artificial inflation
+        assert "Alert refreshed" in res2["escalation_reason"]
+
+
+def test_different_atm_same_zone_creates_separate_alert():
+    """
+    Verifies operational boundary: two complaints pointing to DIFFERENT ATMs
+    in the same zone are NOT falsely deduplicated into each other.
+    """
+    ts = "2026-09-17 12:00:00"
+
+    with get_db_connection() as conn:
+        res_atm_a = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-SEPARATE-A",
+                "predicted_atm_id": "ATM-NO-011",
+                "predicted_zone_id": "ZONE_NORTH",
+                "confidence_score": 0.35,
+                "top_candidates": [],
+                "predicted_window_start": ts,
+                "predicted_window_end": ts,
+                "risk_level": "MODERATE",
+                "explanation_codes": [],
+                "priority_score": 50,
+                "priority_level": "MEDIUM",
+                "priority_reasons": [],
+                "playbook": None,
+                "reference_timestamp": ts,
+            },
+            window_hours=24,
+        )
+        res_atm_b = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-SEPARATE-B",
+                "predicted_atm_id": "ATM-NO-012",
+                "predicted_zone_id": "ZONE_NORTH",
+                "confidence_score": 0.35,
+                "top_candidates": [],
+                "predicted_window_start": ts,
+                "predicted_window_end": ts,
+                "risk_level": "MODERATE",
+                "explanation_codes": [],
+                "priority_score": 50,
+                "priority_level": "MEDIUM",
+                "priority_reasons": [],
+                "playbook": None,
+                "reference_timestamp": ts,
+            },
+            window_hours=24,
+        )
+
+        assert res_atm_a["prediction_id"] != res_atm_b["prediction_id"]
+        assert res_atm_a["predicted_atm_id"] == "ATM-NO-011"
+        assert res_atm_b["predicted_atm_id"] == "ATM-NO-012"
+        assert res_atm_a["alert_state"] == "NEW"
+        assert res_atm_b["alert_state"] == "NEW"
+
+
+def test_material_priority_surge_escalation():
+    """
+    Verifies that an incoming incident with a materially higher priority score (+10 pts)
+    and higher priority tier triggers an immediate ESCALATED alert state.
+    """
+    ts_start = "2026-09-16 08:00:00"
+    ts_surge = "2026-09-16 11:00:00"
+
+    with get_db_connection() as conn:
+        # Initial lower-priority event
+        res_init = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-SURGE-01",
+                "predicted_atm_id": "ATM-CE-009",
+                "predicted_zone_id": "ZONE_CENTRAL",
+                "confidence_score": 0.20,
+                "top_candidates": [],
+                "predicted_window_start": ts_start,
+                "predicted_window_end": ts_start,
+                "risk_level": "LOW",
+                "explanation_codes": [],
+                "priority_score": 30,
+                "priority_level": "LOW",
+                "priority_reasons": ["Low loss amount"],
+                "playbook": None,
+                "reference_timestamp": ts_start,
+            },
+            window_hours=24,
+        )
+        assert res_init["alert_state"] == "NEW"
+        initial_id = res_init["prediction_id"]
+
+        # Surge event: high loss, short delay -> priority score 85, CRITICAL
+        res_escalated = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-SURGE-02",
+                "predicted_atm_id": "ATM-CE-009",
+                "predicted_zone_id": "ZONE_CENTRAL",
+                "confidence_score": 0.65,
+                "top_candidates": [],
+                "predicted_window_start": ts_surge,
+                "predicted_window_end": ts_surge,
+                "risk_level": "CRITICAL",
+                "explanation_codes": ["EXP_FAST_REPORT"],
+                "priority_score": 85,
+                "priority_level": "CRITICAL",
+                "priority_reasons": ["Urgent short delay", "Large financial loss"],
+                "playbook": None,
+                "reference_timestamp": ts_surge,
+            },
+            window_hours=24,
+        )
+
+        assert res_escalated["prediction_id"] == initial_id
+        assert res_escalated["alert_state"] == "ESCALATED"
+        assert res_escalated["action_status"] == "ESCALATED_ALERT"
+        assert res_escalated["occurrence_count"] == 2
+        assert res_escalated["priority_score"] == 85
+        assert res_escalated["priority_level"] == "CRITICAL"
+        assert "Escalated:" in res_escalated["escalation_reason"]
+        assert "Priority tier elevated" in res_escalated["escalation_reason"]
+        assert "+55 pts" in res_escalated["escalation_reason"]
+
+
+def test_high_velocity_repetition_escalation():
+    """
+    Verifies that 3 repeated incidents mapped to the same ATM within the window
+    escalate due to high velocity even if scores are otherwise stable.
+    """
+    ts1 = "2026-09-15 10:00:00"
+    ts2 = "2026-09-15 11:00:00"
+    ts3 = "2026-09-15 12:00:00"
+
+    with get_db_connection() as conn:
+        res1 = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-VEL-01",
+                "predicted_atm_id": "ATM-SO-028",
+                "predicted_zone_id": "ZONE_SOUTH",
+                "confidence_score": 0.30,
+                "top_candidates": [],
+                "predicted_window_start": ts1,
+                "predicted_window_end": ts1,
+                "risk_level": "MODERATE",
+                "explanation_codes": [],
+                "priority_score": 40,
+                "priority_level": "MEDIUM",
+                "priority_reasons": [],
+                "playbook": None,
+                "reference_timestamp": ts1,
+            },
+            window_hours=24,
+        )
+        assert res1["occurrence_count"] == 1
+        assert res1["alert_state"] == "NEW"
+
+        res2 = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-VEL-02",
+                "predicted_atm_id": "ATM-SO-028",
+                "predicted_zone_id": "ZONE_SOUTH",
+                "confidence_score": 0.30,
+                "top_candidates": [],
+                "predicted_window_start": ts2,
+                "predicted_window_end": ts2,
+                "risk_level": "MODERATE",
+                "explanation_codes": [],
+                "priority_score": 40,
+                "priority_level": "MEDIUM",
+                "priority_reasons": [],
+                "playbook": None,
+                "reference_timestamp": ts2,
+            },
+            window_hours=24,
+        )
+        assert res2["occurrence_count"] == 2
+        assert res2["alert_state"] == "REFRESHED"
+
+        # Third occurrence triggers velocity escalation
+        res3 = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-VEL-03",
+                "predicted_atm_id": "ATM-SO-028",
+                "predicted_zone_id": "ZONE_SOUTH",
+                "confidence_score": 0.30,
+                "top_candidates": [],
+                "predicted_window_start": ts3,
+                "predicted_window_end": ts3,
+                "risk_level": "MODERATE",
+                "explanation_codes": [],
+                "priority_score": 40,
+                "priority_level": "MEDIUM",
+                "priority_reasons": [],
+                "playbook": None,
+                "reference_timestamp": ts3,
+            },
+            window_hours=24,
+        )
+        assert res3["occurrence_count"] == 3
+        assert res3["alert_state"] == "ESCALATED"
+        assert res3["action_status"] == "ESCALATED_ALERT"
+        assert "High-frequency" in res3["escalation_reason"] or "velocity" in res3["escalation_reason"]
+
+
+def test_expired_window_creates_new_alert():
+    """
+    Verifies that if an existing alert is outside the rolling window (> 24 hours),
+    a new complaint at the same ATM creates a fresh NEW alert rather than deduplicating.
+    """
+    ts_old = "2026-09-10 08:00:00"
+    ts_new = "2026-09-12 12:00:00"  # 52 hours later (> 24h)
+
+    with get_db_connection() as conn:
+        res_old = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-EXP-01",
+                "predicted_atm_id": "ATM-EA-038",
+                "predicted_zone_id": "ZONE_EAST",
+                "confidence_score": 0.30,
+                "top_candidates": [],
+                "predicted_window_start": ts_old,
+                "predicted_window_end": ts_old,
+                "risk_level": "MODERATE",
+                "explanation_codes": [],
+                "priority_score": 40,
+                "priority_level": "MEDIUM",
+                "priority_reasons": [],
+                "playbook": None,
+                "reference_timestamp": ts_old,
+            },
+            window_hours=24,
+        )
+        assert res_old["alert_state"] == "NEW"
+
+        res_new = process_alert_lifecycle(
+            db_conn=conn,
+            prediction_candidate={
+                "complaint_id": "CMP-EXP-02",
+                "predicted_atm_id": "ATM-EA-038",
+                "predicted_zone_id": "ZONE_EAST",
+                "confidence_score": 0.30,
+                "top_candidates": [],
+                "predicted_window_start": ts_new,
+                "predicted_window_end": ts_new,
+                "risk_level": "MODERATE",
+                "explanation_codes": [],
+                "priority_score": 40,
+                "priority_level": "MEDIUM",
+                "priority_reasons": [],
+                "playbook": None,
+                "reference_timestamp": ts_new,
+            },
+            window_hours=24,
+        )
+        assert res_new["prediction_id"] != res_old["prediction_id"]
+        assert res_new["alert_state"] == "NEW"
+        assert res_new["occurrence_count"] == 1
+
+
+def test_list_predictions_includes_alert_lifecycle():
+    """Verifies that GET /api/predictions history endpoint supplies alert lifecycle metadata."""
+    preds = list_predictions(limit=10)
+    assert isinstance(preds, list)
+    assert len(preds) > 0
+    for p in preds:
+        assert "alert_state" in p
+        assert p["alert_state"] in ("NEW", "REFRESHED", "ESCALATED")
+        assert "occurrence_count" in p
+        assert p["occurrence_count"] >= 1
+        assert "escalation_reason" in p
 
 
 

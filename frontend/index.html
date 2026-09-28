@@ -221,6 +221,7 @@
               <span id="predPriorityScore" class="hero-score-val">--</span>
               <span class="hero-score-denom">/100</span>
             </div>
+            <span id="predAlertStateBadge" class="alert-state-badge state-new">NEW ALERT</span>
             <span id="predRiskBadge" class="risk-tag risk-critical" style="display:none;">CRITICAL RISK</span>
           </div>
           <div class="hero-header-actions">
@@ -232,6 +233,12 @@
               <span>&#128506; Focus Map</span>
             </button>
           </div>
+        </div>
+
+        <!-- Alert Lifecycle Notification Banner (Refresh / Escalation Rationale) -->
+        <div id="predAlertLifecycleNote" class="alert-lifecycle-banner" style="display:none;">
+          <span class="lifecycle-note-icon">&#9432;</span>
+          <span id="predAlertLifecycleText" class="lifecycle-note-text"></span>
         </div>
 
         <!-- 2. Primary Immediate Action Callout (Answering "What action is recommended?") -->
@@ -469,6 +476,7 @@
             <tr>
               <th>Timestamp</th>
               <th>Predicted Target</th>
+              <th>Alert State</th>
               <th>Jurisdiction Zone</th>
               <th>Operational Risk</th>
               <th>Patrol Status</th>

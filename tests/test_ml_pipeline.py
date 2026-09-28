@@ -19,7 +19,9 @@ import pandas as pd
 import pytest
 from sklearn.frozen import FrozenEstimator
 
+import sys
 BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR))
 DATA_DIR = BASE_DIR / "data"
 MODELS_DIR = BASE_DIR / "ml" / "models"
 

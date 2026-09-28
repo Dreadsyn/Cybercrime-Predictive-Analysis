@@ -78,6 +78,14 @@ def ensure_db_schema():
                 cur.execute("ALTER TABLE predictions ADD COLUMN priority_reasons_json TEXT DEFAULT '[]';")
             if "playbook_json" not in existing_cols:
                 cur.execute("ALTER TABLE predictions ADD COLUMN playbook_json TEXT DEFAULT '{}';")
+            if "alert_state" not in existing_cols:
+                cur.execute("ALTER TABLE predictions ADD COLUMN alert_state VARCHAR(20) DEFAULT 'NEW';")
+            if "occurrence_count" not in existing_cols:
+                cur.execute("ALTER TABLE predictions ADD COLUMN occurrence_count INTEGER DEFAULT 1;")
+            if "escalation_reason" not in existing_cols:
+                cur.execute("ALTER TABLE predictions ADD COLUMN escalation_reason TEXT DEFAULT '';")
+            if "parent_alert_id" not in existing_cols:
+                cur.execute("ALTER TABLE predictions ADD COLUMN parent_alert_id VARCHAR(32) DEFAULT NULL;")
 
 
 def init_db():

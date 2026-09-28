@@ -35,7 +35,7 @@ sys.path.insert(0, str(BASE_DIR))
 # Database and Schemas
 from backend.app.cluster_engine import detect_emerging_clusters
 from backend.app.convergence_engine import detect_repeated_convergence
-from backend.app.database import get_db_connection, verify_database_readiness
+from backend.app.database import ensure_db_schema, get_db_connection, verify_database_readiness
 from backend.app.ml_engine import ml_engine
 from backend.app.playbook_engine import generate_investigator_playbook
 from backend.app.schemas import (
@@ -59,6 +59,9 @@ app = FastAPI(
     description="Forecast likely cybercrime cash withdrawal ATM locations in advance for proactive intervention.",
     version="1.0.0",
 )
+
+# Ensure database schema is backwards-compatible on startup
+ensure_db_schema()
 
 
 # ==============================================================================
@@ -432,6 +435,12 @@ def list_predictions(limit: int = Query(25, ge=1, le=100)):
                 d["playbook"] = None
         else:
             d["playbook"] = None
+
+        # Alert deduplication and escalation lifecycle fields
+        d["alert_state"] = d.get("alert_state", "NEW") or "NEW"
+        d["occurrence_count"] = d.get("occurrence_count", 1) or 1
+        d["escalation_reason"] = d.get("escalation_reason", "") or ""
+        d["parent_alert_id"] = d.get("parent_alert_id", None)
         results.append(d)
     return results
 

@@ -386,57 +386,33 @@ class MLEngine:
             "mule_bank_code": payload.get("mule_bank_code", ""),
         })
 
-        # 9. Persistence to predictions table
-        prediction_id = f"PRED-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
-        cur = db_conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO predictions (
-                prediction_id, complaint_id, prediction_timestamp, predicted_atm_id,
-                predicted_zone_id, confidence_score, top_candidates_json,
-                predicted_window_start, predicted_window_end, risk_level,
-                explanation_codes_json, action_status, priority_score, priority_level,
-                priority_reasons_json, playbook_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """,
-            (
-                prediction_id,
-                complaint_id,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                top1_atm_id,
-                predicted_zone_id,
-                round(confidence_score, 4),
-                json.dumps(top_candidates),
-                predicted_window_start,
-                predicted_window_end,
-                risk_level,
-                json.dumps(explanation_codes),
-                "NEW_ALERT",
-                priority_info["priority_score"],
-                priority_info["priority_level"],
-                json.dumps(priority_info["priority_reasons"]),
-                json.dumps(playbook),
-            ),
+        # 9. Alert Lifecycle Management (Deduplication & Escalation)
+        from backend.app.alert_engine import process_alert_lifecycle
+        alert_result = process_alert_lifecycle(
+            db_conn=db_conn,
+            prediction_candidate={
+                "complaint_id": complaint_id,
+                "predicted_atm_id": top1_atm_id,
+                "predicted_zone_id": predicted_zone_id,
+                "confidence_score": round(confidence_score, 4),
+                "top_candidates": top_candidates,
+                "predicted_window_start": predicted_window_start,
+                "predicted_window_end": predicted_window_end,
+                "risk_level": risk_level,
+                "explanation_codes": explanation_codes,
+                "priority_score": priority_info["priority_score"],
+                "priority_level": priority_info["priority_level"],
+                "priority_reasons": priority_info["priority_reasons"],
+                "playbook": playbook,
+                "reported_amount": rep_amt,
+                "payment_channel": payload.get("payment_channel", "UPI"),
+                "mule_bank_code": payload.get("mule_bank_code", ""),
+                "reference_timestamp": payload.get("complaint_timestamp"),
+            },
+            window_hours=24,
         )
 
-        return {
-            "prediction_id": prediction_id,
-            "complaint_id": complaint_id,
-            "prediction_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "predicted_atm_id": top1_atm_id,
-            "predicted_zone_id": predicted_zone_id,
-            "confidence_score": round(confidence_score, 4),
-            "top_candidates": top_candidates,
-            "predicted_window_start": predicted_window_start,
-            "predicted_window_end": predicted_window_end,
-            "risk_level": risk_level,
-            "explanation_codes": explanation_codes,
-            "action_status": "NEW_ALERT",
-            "priority_score": priority_info["priority_score"],
-            "priority_level": priority_info["priority_level"],
-            "priority_reasons": priority_info["priority_reasons"],
-            "playbook": playbook,
-        }
+        return alert_result
 
 
 # Global engine instance

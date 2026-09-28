@@ -438,6 +438,38 @@ function renderPredictionResult(result) {
       .join("");
   }
 
+  // Alert Deduplication & Escalation Lifecycle State
+  const alertStateBadge = document.getElementById("predAlertStateBadge");
+  const lifecycleNote = document.getElementById("predAlertLifecycleNote");
+  const lifecycleText = document.getElementById("predAlertLifecycleText");
+  const state = (result.alert_state || "NEW").toUpperCase();
+  const occCount = result.occurrence_count || 1;
+
+  if (alertStateBadge) {
+    alertStateBadge.className = `alert-state-badge state-${state.toLowerCase()}`;
+    if (state === "NEW") {
+      alertStateBadge.innerText = "NEW ALERT";
+    } else if (state === "REFRESHED") {
+      alertStateBadge.innerText = `REFRESHED (${occCount}x)`;
+    } else if (state === "ESCALATED") {
+      alertStateBadge.innerText = `ESCALATED (${occCount}x)`;
+    }
+  }
+
+  if (lifecycleNote && lifecycleText) {
+    if (state === "ESCALATED") {
+      lifecycleNote.className = "alert-lifecycle-banner banner-escalated";
+      lifecycleNote.style.display = "flex";
+      lifecycleText.innerText = result.escalation_reason || "Alert escalated: High-velocity convergence or material priority surge detected.";
+    } else if (state === "REFRESHED") {
+      lifecycleNote.className = "alert-lifecycle-banner";
+      lifecycleNote.style.display = "flex";
+      lifecycleText.innerText = result.escalation_reason || `Alert refreshed: Subsequent incident deduplicated at target ATM (${occCount} occurrences). Risk profile stable.`;
+    } else {
+      lifecycleNote.style.display = "none";
+    }
+  }
+
   // Intervention Window (HH:MM – HH:MM)
   if (windowEl && result.predicted_window_start && result.predicted_window_end) {
     const startTime = result.predicted_window_start.substring(11, 16);
@@ -594,7 +626,7 @@ function renderAlertHistory(predictions) {
   if (!container) return;
 
   if (!predictions || predictions.length === 0) {
-    container.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 12px;">No recent alerts generated.</td></tr>`;
+    container.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 12px;">No recent alerts generated.</td></tr>`;
     return;
   }
 
@@ -602,10 +634,15 @@ function renderAlertHistory(predictions) {
     .map(p => {
       const pLevel = (p.priority_level || p.risk_level || "LOW").toUpperCase();
       const pScore = typeof p.priority_score === "number" ? p.priority_score : null;
+      const state = (p.alert_state || "NEW").toUpperCase();
+      const occCount = p.occurrence_count || 1;
+      const stateBadge = `<span class="alert-state-badge state-${state.toLowerCase()}" title="${escapeHtml(p.escalation_reason || '')}">${state}${occCount > 1 ? ` (${occCount}x)` : ""}</span>`;
+
       return `
       <tr>
         <td><small style="color: var(--text-muted); font-family: monospace;">${p.prediction_timestamp.substring(11, 19)}</small></td>
         <td><b style="color: var(--accent-blue);">${p.predicted_atm_id}</b></td>
+        <td>${stateBadge}</td>
         <td>${p.predicted_zone_id.replace("ZONE_", "")}</td>
         <td>
           <span class="priority-tag priority-${pLevel.toLowerCase()}">
