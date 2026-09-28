@@ -468,6 +468,7 @@
       <button type="button" class="tab-btn" data-tab="tab-dispatch">Recent Dispatch Log</button>
       <button type="button" class="tab-btn" data-tab="tab-clusters">Emerging Cash-Out Clusters <span id="clusterBadgeCount" class="tab-counter-badge">0</span></button>
       <button type="button" class="tab-btn" data-tab="tab-convergences">Repeated Convergence <span id="convergenceBadgeCount" class="tab-counter-badge">0</span></button>
+      <button type="button" class="tab-btn" data-tab="tab-performance">Intervention Performance</button>
     </div>
 
     <!-- Tab 1: Historical Analytics Charts -->
@@ -611,6 +612,124 @@
             <!-- Dynamically populated -->
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Tab 5: Intervention Performance & Operational Analytics (Feature) -->
+    <div id="tab-performance" class="tab-pane">
+      <div class="cluster-toolbar">
+        <div class="cluster-summary-text">
+          <span id="perfStatusSummary">Operational metrics calculated strictly from recorded case dispatches, lifecycle progression, and verified outcomes.</span>
+        </div>
+        <div class="cluster-filters-row">
+          <button type="button" id="btnRefreshPerformance" class="btn-zone-filter">Refresh Metrics</button>
+        </div>
+      </div>
+
+      <!-- Operational KPI Overview Grid -->
+      <div class="perf-kpi-grid">
+        <div class="perf-card">
+          <div class="perf-card-title">Actionable Pipeline</div>
+          <div class="perf-stat-main">
+            <span id="perfTotalCases" class="perf-stat-num">0</span>
+            <span class="perf-stat-label">Total Cases</span>
+          </div>
+          <div class="perf-stat-sub">
+            <span>New Alerts: <b id="perfNewCases">0</b></span>
+            <span>Dispatched: <b id="perfDispatchedCases">0</b></span>
+            <span>Resolved: <b id="perfResolvedCases">0</b></span>
+          </div>
+        </div>
+
+        <div class="perf-card">
+          <div class="perf-card-title">Interception &amp; Spatial Accuracy</div>
+          <div class="perf-stat-main">
+            <span id="perfSpatialHitRate" class="perf-stat-num" style="color: var(--accent-teal);">0.0%</span>
+            <span class="perf-stat-label">Spatial Hit Rate</span>
+          </div>
+          <div class="perf-stat-sub">
+            <span>Predicted ATM Matches: <b id="perfMatchedAtms">0</b></span>
+            <span>Total Intercepted: <b id="perfInterceptedCases">0</b></span>
+            <span>Interception Rate: <b id="perfInterceptionRate">0.0%</b></span>
+          </div>
+        </div>
+
+        <div class="perf-card">
+          <div class="perf-card-title">Response Latency (Mean)</div>
+          <div class="perf-stat-main">
+            <span id="perfAlertToDispatch" class="perf-stat-num" style="color: var(--accent-blue);">0.0m</span>
+            <span class="perf-stat-label">Alert &rarr; Dispatch</span>
+          </div>
+          <div class="perf-stat-sub">
+            <span>Dispatch &rarr; Outcome: <b id="perfDispatchToOutcome">0.0m</b></span>
+            <span>Total Latency: <b id="perfAlertToOutcome">0.0m</b></span>
+            <span>Timed Cases: <b id="perfTimedCases">0</b></span>
+          </div>
+        </div>
+
+        <div class="perf-card">
+          <div class="perf-card-title">Operational Feedback</div>
+          <div class="perf-stat-main">
+            <span id="perfTotalOutcomes" class="perf-stat-num">0</span>
+            <span class="perf-stat-label">Outcomes Logged</span>
+          </div>
+          <div class="perf-stat-sub">
+            <span>False Alerts: <b id="perfFalseAlerts">0</b></span>
+            <span>No Cashout: <b id="perfNoCashout">0</b></span>
+            <span>Unresolved: <b id="perfUnresolved">0</b></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Outcome Distribution & Performance Tables Grid -->
+      <div class="perf-detail-grid" style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="chart-card-box">
+          <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">
+            Zone Intervention Performance
+          </div>
+          <div class="candidate-table-wrap" style="max-height: 220px; overflow-y: auto;">
+            <table class="mini-table">
+              <thead>
+                <tr>
+                  <th>Zone ID</th>
+                  <th>Cases</th>
+                  <th>Dispatched</th>
+                  <th>Resolved</th>
+                  <th>Outcomes</th>
+                  <th>Matches</th>
+                  <th>Hit Rate</th>
+                </tr>
+              </thead>
+              <tbody id="perfZoneTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="chart-card-box">
+          <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">
+            ATM Kiosk Intervention Performance (Top Actioned)
+          </div>
+          <div class="candidate-table-wrap" style="max-height: 220px; overflow-y: auto;">
+            <table class="mini-table">
+              <thead>
+                <tr>
+                  <th>ATM ID</th>
+                  <th>Zone</th>
+                  <th>Cases</th>
+                  <th>Dispatched</th>
+                  <th>Resolved</th>
+                  <th>Matches</th>
+                  <th>Hit Rate</th>
+                </tr>
+              </thead>
+              <tbody id="perfAtmTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </section>

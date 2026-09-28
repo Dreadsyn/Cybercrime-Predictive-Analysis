@@ -38,6 +38,7 @@ from backend.app.main import (
     get_case_outcome_endpoint,
     get_dashboard_stats,
     get_emerging_clusters,
+    get_intervention_performance_endpoint,
     get_model_information,
     get_outcome_metrics_endpoint,
     get_repeated_convergences,
@@ -84,6 +85,7 @@ from backend.app.outcome_engine import (
     list_case_outcomes,
     record_or_update_case_outcome,
 )
+from backend.app.analytics_engine import get_intervention_performance_analytics
 from backend.app.cluster_engine import detect_emerging_clusters
 from backend.app.convergence_engine import (
     compute_atm_convergence_score,
@@ -100,6 +102,7 @@ from backend.app.schemas import (
     ComplaintCreate,
     DispatchCreateRequest,
     DispatchResponse,
+    InterventionPerformanceResponse,
     OutcomeMetricsResponse,
     PlaybookRequest,
     PredictionRequest,
@@ -2198,6 +2201,151 @@ def test_record_outcome_nonexistent_case_404():
             request=CaseOutcomeCreateRequest(outcome_status="UNRESOLVED"),
         )
     assert exc_info.value.status_code == 404
+
+
+# ==============================================================================
+# SECTION 14: INTERVENTION PERFORMANCE & OPERATIONAL ANALYTICS TESTS
+# ==============================================================================
+def test_intervention_performance_schema_and_types():
+    """
+    Verifies GET /api/analytics/intervention-performance returns valid
+    aggregate performance metrics conforming strictly to InterventionPerformanceResponse.
+    """
+    analytics = get_intervention_performance_endpoint()
+    validated = InterventionPerformanceResponse(**analytics)
+
+    assert isinstance(validated.generated_timestamp, str)
+    assert validated.total_actionable_cases >= 0
+    assert validated.dispatched_cases >= 0
+    assert validated.resolved_cases >= 0
+    assert validated.new_alert_cases >= 0
+    assert validated.intercepted_cases >= 0
+    assert validated.unresolved_count >= 0
+    assert validated.false_alert_count >= 0
+    assert validated.no_cashout_count >= 0
+    assert validated.total_outcomes_logged >= 0
+    assert validated.predicted_vs_actual_matches >= 0
+    assert 0.0 <= validated.spatial_hit_rate_pct <= 100.0
+    assert 0.0 <= validated.interception_success_rate_pct <= 100.0
+
+    # Validate timing metrics
+    timing = validated.timing
+    assert timing.avg_alert_to_dispatch_mins >= 0.0
+    assert timing.avg_dispatch_to_outcome_mins >= 0.0
+    assert timing.avg_alert_to_outcome_mins >= 0.0
+    assert timing.sampled_timed_cases >= 0
+
+    # Validate zone and ATM collections
+    assert isinstance(validated.performance_by_zone, list)
+    assert isinstance(validated.performance_by_atm, list)
+    assert isinstance(validated.outcome_breakdown, dict)
+
+
+def test_intervention_performance_with_recorded_pipeline():
+    """
+    Simulates a full operational pipeline (predict -> case -> dispatch -> outcome)
+    and verifies that analytics counters, hit rates, and zone/ATM metrics accurately update.
+    """
+    # 1. Create Prediction & Case in ZONE_EAST
+    req1 = PredictionRequest(
+        crime_category="PHISHING_UPI",
+        reported_amount=48000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_EAST",
+        reporting_delay_mins=25.0,
+        incident_hour=16,
+        incident_day_of_week=3,
+        complaint_id="CMP-TEST-PERF-01",
+    )
+    pred_res1 = predict_cashout_location(req1)
+    case_id1 = pred_res1["case_id"]
+    atm_id1 = pred_res1["predicted_atm_id"]
+
+    # 2. Dispatch Patrol for Case 1
+    dispatch_patrol_endpoint(
+        case_id=case_id1,
+        request=DispatchCreateRequest(patrol_unit="PCR-EAST-99", notes="Priority rapid response"),
+    )
+
+    # 3. Log Successful Interception Outcome (Spatial Hit)
+    record_case_outcome_endpoint(
+        case_id=case_id1,
+        request=CaseOutcomeCreateRequest(
+            outcome_status="INTERCEPTED_AT_PREDICTED_ATM",
+            actual_atm_id=atm_id1,
+            notes="Suspect intercepted in cash-out queue at predicted ATM kiosk",
+        ),
+    )
+
+    # 4. Create second Case in ZONE_WEST with False Alert
+    req2 = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=95000.0,
+        payment_channel="NEFT",
+        mule_bank_code="BANK_PNB_SYNTH",
+        mule_account_tier="RURAL_REGIONAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=120.0,
+        incident_hour=11,
+        incident_day_of_week=4,
+        complaint_id="CMP-TEST-PERF-02",
+    )
+    pred_res2 = predict_cashout_location(req2)
+    case_id2 = pred_res2["case_id"]
+
+    dispatch_patrol_endpoint(
+        case_id=case_id2,
+        request=DispatchCreateRequest(patrol_unit="PCR-WEST-88"),
+    )
+    record_case_outcome_endpoint(
+        case_id=case_id2,
+        request=CaseOutcomeCreateRequest(
+            outcome_status="FALSE_ALERT",
+            notes="Verified legitimate merchant remittance",
+        ),
+    )
+
+    # 5. Fetch and verify analytics
+    analytics = get_intervention_performance_endpoint()
+
+    assert analytics["total_actionable_cases"] >= 2
+    assert analytics["dispatched_cases"] >= 2
+    assert analytics["resolved_cases"] >= 2
+    assert analytics["total_outcomes_logged"] >= 2
+    assert analytics["predicted_vs_actual_matches"] >= 1
+    assert analytics["spatial_hit_rate_pct"] > 0.0
+    assert analytics["interception_success_rate_pct"] > 0.0
+    assert analytics["outcome_breakdown"]["INTERCEPTED_AT_PREDICTED_ATM"] >= 1
+    assert analytics["outcome_breakdown"]["FALSE_ALERT"] >= 1
+
+    # Check zone performance
+    zones = {z["zone_id"]: z for z in analytics["performance_by_zone"]}
+    assert "ZONE_EAST" in zones
+    assert zones["ZONE_EAST"]["total_cases"] >= 1
+    assert zones["ZONE_EAST"]["spatial_hits"] >= 1
+
+    # Check ATM performance
+    atms = {a["atm_id"]: a for a in analytics["performance_by_atm"]}
+    assert atm_id1 in atms
+    assert atms[atm_id1]["total_cases"] >= 1
+    assert atms[atm_id1]["spatial_hits"] >= 1
+
+
+def test_intervention_performance_direct_engine():
+    """
+    Directly tests get_intervention_performance_analytics helper on a sqlite3 connection.
+    """
+    with get_db_connection() as conn:
+        res = get_intervention_performance_analytics(conn)
+
+    assert "generated_timestamp" in res
+    assert "outcome_breakdown" in res
+    assert "timing" in res
+    assert "performance_by_zone" in res
+    assert "performance_by_atm" in res
+    assert isinstance(res["timing"]["sampled_timed_cases"], int)
 
 
 

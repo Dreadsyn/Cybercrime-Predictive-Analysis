@@ -57,6 +57,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupModalListeners();
   setupClusterListeners();
   setupConvergenceListeners();
+  setupPerformanceListeners();
 
   // 3. Load Core Telemetry & Data
   await loadDashboardData();
@@ -100,6 +101,9 @@ async function loadDashboardData() {
     // Load Repeated Spatial Convergences (Feature 2)
     await loadConvergences();
 
+    // Load Intervention Performance & Operational Analytics (Feature)
+    await loadInterventionPerformance();
+
     // Cache model info for audit modal
     window.modelInfoData = modelInfo;
   } catch (err) {
@@ -134,6 +138,8 @@ function setupTabListeners() {
       // Trigger window resize so Chart.js recalculates dimensions if switched
       if (targetTabId === "tab-analytics") {
         window.dispatchEvent(new Event("resize"));
+      } else if (targetTabId === "tab-performance") {
+        loadInterventionPerformance();
       }
     });
   });
@@ -1297,6 +1303,7 @@ function setupDispatchModalListeners() {
         }
 
         await loadAlertHistory();
+        loadInterventionPerformance();
       } catch (err) {
         showToast(`Failed to dispatch patrol: ${err.message}`, "error");
       } finally {
@@ -1495,6 +1502,7 @@ function setupOutcomeModalListeners() {
         }
 
         await loadAlertHistory();
+        loadInterventionPerformance();
       } catch (err) {
         showToast(`Failed to record outcome: ${err.message}`, "error");
       } finally {
@@ -1505,7 +1513,129 @@ function setupOutcomeModalListeners() {
   }
 }
 
+/**
+ * Configure intervention performance toolbar listeners.
+ */
+function setupPerformanceListeners() {
+  const refreshBtn = document.getElementById("btnRefreshPerformance");
+  if (refreshBtn) refreshBtn.addEventListener("click", () => loadInterventionPerformance());
+}
 
+/**
+ * Fetch and refresh intervention performance and operational analytics from backend API.
+ */
+async function loadInterventionPerformance() {
+  const summaryEl = document.getElementById("perfStatusSummary");
+  if (summaryEl) summaryEl.innerText = "Recalculating operational intervention performance from recorded cases and outcomes...";
+
+  try {
+    const data = await API.getInterventionPerformance();
+    renderInterventionPerformance(data);
+  } catch (err) {
+    if (summaryEl) summaryEl.innerText = `Intervention analytics error: ${err.message}`;
+  }
+}
+
+/**
+ * Render intervention performance data to KPI cards and breakdown tables.
+ */
+function renderInterventionPerformance(data) {
+  if (!data) return;
+
+  const summaryEl = document.getElementById("perfStatusSummary");
+  if (summaryEl) {
+    summaryEl.innerText = `Operational metrics generated at ${data.generated_timestamp}. Analyzed ${data.total_actionable_cases} operational cases (${data.dispatched_cases} dispatched, ${data.resolved_cases} resolved) and ${data.total_outcomes_logged} verified outcomes.`;
+  }
+
+  // Pipeline Cards
+  const totalCasesEl = document.getElementById("perfTotalCases");
+  const newCasesEl = document.getElementById("perfNewCases");
+  const dispCasesEl = document.getElementById("perfDispatchedCases");
+  const resCasesEl = document.getElementById("perfResolvedCases");
+
+  if (totalCasesEl) totalCasesEl.innerText = data.total_actionable_cases;
+  if (newCasesEl) newCasesEl.innerText = data.new_alert_cases;
+  if (dispCasesEl) dispCasesEl.innerText = data.dispatched_cases;
+  if (resCasesEl) resCasesEl.innerText = data.resolved_cases;
+
+  // Interception & Accuracy
+  const hitRateEl = document.getElementById("perfSpatialHitRate");
+  const matchedAtmsEl = document.getElementById("perfMatchedAtms");
+  const interceptedEl = document.getElementById("perfInterceptedCases");
+  const interceptRateEl = document.getElementById("perfInterceptionRate");
+
+  if (hitRateEl) hitRateEl.innerText = `${data.spatial_hit_rate_pct}%`;
+  if (matchedAtmsEl) matchedAtmsEl.innerText = data.predicted_vs_actual_matches;
+  if (interceptedEl) interceptedEl.innerText = data.intercepted_cases;
+  if (interceptRateEl) interceptRateEl.innerText = `${data.interception_success_rate_pct}%`;
+
+  // Timing
+  const t = data.timing || {};
+  const alertToDispEl = document.getElementById("perfAlertToDispatch");
+  const dispToOutEl = document.getElementById("perfDispatchToOutcome");
+  const alertToOutEl = document.getElementById("perfAlertToOutcome");
+  const timedCasesEl = document.getElementById("perfTimedCases");
+
+  if (alertToDispEl) alertToDispEl.innerText = `${t.avg_alert_to_dispatch_mins}m`;
+  if (dispToOutEl) dispToOutEl.innerText = `${t.avg_dispatch_to_outcome_mins}m`;
+  if (alertToOutEl) alertToOutEl.innerText = `${t.avg_alert_to_outcome_mins}m`;
+  if (timedCasesEl) timedCasesEl.innerText = t.sampled_timed_cases || 0;
+
+  // Feedback Outcomes
+  const totalOutcomesEl = document.getElementById("perfTotalOutcomes");
+  const falseAlertsEl = document.getElementById("perfFalseAlerts");
+  const noCashoutEl = document.getElementById("perfNoCashout");
+  const unresolvedEl = document.getElementById("perfUnresolved");
+
+  if (totalOutcomesEl) totalOutcomesEl.innerText = data.total_outcomes_logged;
+  if (falseAlertsEl) falseAlertsEl.innerText = data.false_alert_count;
+  if (noCashoutEl) noCashoutEl.innerText = data.no_cashout_count;
+  if (unresolvedEl) unresolvedEl.innerText = data.unresolved_count;
+
+  // Zone Breakdown Table
+  const zoneTbody = document.getElementById("perfZoneTableBody");
+  if (zoneTbody) {
+    if (!data.performance_by_zone || data.performance_by_zone.length === 0) {
+      zoneTbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 12px;">No recorded operational cases across zones.</td></tr>`;
+    } else {
+      zoneTbody.innerHTML = data.performance_by_zone
+        .map(z => `
+          <tr>
+            <td><b>${escapeHtml(z.zone_id.replace("ZONE_", ""))}</b></td>
+            <td>${z.total_cases}</td>
+            <td>${z.dispatched_cases}</td>
+            <td>${z.resolved_cases}</td>
+            <td>${z.outcomes_logged}</td>
+            <td><b>${z.spatial_hits}</b></td>
+            <td><span class="priority-tag ${z.spatial_hit_rate_pct > 0 ? "priority-low" : "priority-moderate"}">${z.spatial_hit_rate_pct}%</span></td>
+          </tr>
+        `)
+        .join("");
+    }
+  }
+
+  // ATM Breakdown Table
+  const atmTbody = document.getElementById("perfAtmTableBody");
+  if (atmTbody) {
+    if (!data.performance_by_atm || data.performance_by_atm.length === 0) {
+      atmTbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 12px;">No recorded operational cases targeting ATMs.</td></tr>`;
+    } else {
+      atmTbody.innerHTML = data.performance_by_atm
+        .map(a => `
+          <tr>
+            <td><b style="color: var(--accent-blue);">${escapeHtml(a.atm_id)}</b></td>
+            <td>${escapeHtml(a.zone_id.replace("ZONE_", ""))}</td>
+            <td>${a.total_cases}</td>
+            <td>${a.dispatched_cases}</td>
+            <td>${a.resolved_cases}</td>
+            <td><b>${a.spatial_hits}</b></td>
+            <td><span class="priority-tag ${a.spatial_hit_rate_pct > 0 ? "priority-low" : "priority-moderate"}">${a.spatial_hit_rate_pct}%</span></td>
+          </tr>
+        `)
+        .join("");
+    }
+  }
+}
 
 /**
  * Toast notifications for user feedback.
@@ -1533,3 +1663,4 @@ function showToast(message, type = "info") {
     setTimeout(() => toast.remove(), 300);
   }, 3200);
 }
+

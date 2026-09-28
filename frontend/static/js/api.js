@@ -167,6 +167,11 @@ export const API = {
   async getOutcomeMetrics() {
     return await request("/outcomes/metrics");
   },
+
+  // 13. Intervention Performance & Operational Analytics (Feature)
+  async getInterventionPerformance() {
+    return await request("/analytics/intervention-performance");
+  },
 };
 
 

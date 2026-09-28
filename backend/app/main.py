@@ -32,7 +32,7 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 STATIC_DIR = FRONTEND_DIR / "static"
 sys.path.insert(0, str(BASE_DIR))
 
-# Database and Schemas
+from backend.app.analytics_engine import get_intervention_performance_analytics
 from backend.app.cluster_engine import detect_emerging_clusters
 from backend.app.convergence_engine import detect_repeated_convergence
 from backend.app.database import ensure_db_schema, get_db_connection, verify_database_readiness
@@ -69,6 +69,7 @@ from backend.app.schemas import (
     DispatchResponse,
     EvidenceExportResponse,
     HotspotZone,
+    InterventionPerformanceResponse,
     InvestigatorPlaybook,
     ModelInfoResponse,
     OutcomeMetricsResponse,
@@ -393,6 +394,19 @@ def get_repeated_convergences(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Convergence detection failed: {str(e)}")
 
+
+@app.get("/api/analytics/intervention-performance", response_model=InterventionPerformanceResponse, tags=["Analytics"])
+def get_intervention_performance_endpoint():
+    """
+    Computes aggregate operational intervention performance and analytics
+    strictly from recorded cases, dispatches, predictions, and outcomes.
+    """
+    try:
+        with get_db_connection() as conn:
+            analytics = get_intervention_performance_analytics(conn)
+        return analytics
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Intervention performance analytics failed: {str(e)}")
 
 
 @app.post("/api/predict", response_model=PredictionResponse, status_code=status.HTTP_200_OK, tags=["Predictive Analytics"])

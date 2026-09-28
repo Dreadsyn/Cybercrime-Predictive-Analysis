@@ -540,3 +540,54 @@ class ConvergenceResponse(BaseModel):
     zone_filter: Optional[str] = None
     convergences: List[RepeatedConvergence]
 
+
+# ==============================================================================
+# 7. INTERVENTION PERFORMANCE & OPERATIONAL ANALYTICS SCHEMAS
+# ==============================================================================
+class ZonePerformanceMetric(BaseModel):
+    zone_id: str
+    total_cases: int
+    dispatched_cases: int
+    resolved_cases: int
+    outcomes_logged: int
+    spatial_hits: int
+    spatial_hit_rate_pct: float
+
+
+class ATMPerformanceMetric(BaseModel):
+    atm_id: str
+    zone_id: str
+    total_cases: int
+    dispatched_cases: int
+    resolved_cases: int
+    outcomes_logged: int
+    spatial_hits: int
+    spatial_hit_rate_pct: float
+
+
+class InterventionTimingMetrics(BaseModel):
+    avg_alert_to_dispatch_mins: float
+    avg_dispatch_to_outcome_mins: float
+    avg_alert_to_outcome_mins: float
+    sampled_timed_cases: int
+
+
+class InterventionPerformanceResponse(BaseModel):
+    generated_timestamp: str
+    total_actionable_cases: int
+    dispatched_cases: int
+    resolved_cases: int
+    new_alert_cases: int
+    intercepted_cases: int
+    unresolved_count: int
+    false_alert_count: int
+    no_cashout_count: int
+    total_outcomes_logged: int
+    predicted_vs_actual_matches: int
+    spatial_hit_rate_pct: float
+    interception_success_rate_pct: float
+    outcome_breakdown: Dict[str, int]
+    timing: InterventionTimingMetrics
+    performance_by_zone: List[ZonePerformanceMetric]
+    performance_by_atm: List[ATMPerformanceMetric]
+
