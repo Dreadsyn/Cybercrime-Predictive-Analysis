@@ -123,6 +123,25 @@ CREATE TABLE IF NOT EXISTS patrol_dispatches (
 );
 """
 
+SQL_CREATE_CASE_OUTCOMES = """
+CREATE TABLE IF NOT EXISTS case_outcomes (
+    outcome_id VARCHAR(32) PRIMARY KEY,
+    case_id VARCHAR(32) NOT NULL UNIQUE,
+    prediction_id VARCHAR(32) NOT NULL,
+    dispatch_id VARCHAR(32) DEFAULT NULL,
+    outcome_status VARCHAR(50) NOT NULL,
+    predicted_atm_id VARCHAR(32) NOT NULL,
+    actual_atm_id VARCHAR(32) DEFAULT NULL,
+    is_spatial_hit INTEGER NOT NULL DEFAULT 0,
+    recorded_timestamp TEXT NOT NULL,
+    notes TEXT DEFAULT '',
+    investigator_id VARCHAR(64) DEFAULT 'INV-DESK-01',
+    FOREIGN KEY (case_id) REFERENCES operational_cases (case_id) ON DELETE CASCADE,
+    FOREIGN KEY (predicted_atm_id) REFERENCES atm_locations (atm_id),
+    FOREIGN KEY (actual_atm_id) REFERENCES atm_locations (atm_id)
+);
+"""
+
 ALL_TABLE_DDL = [
     SQL_CREATE_ATM_LOCATIONS,
     SQL_CREATE_COMPLAINTS,
@@ -130,4 +149,6 @@ ALL_TABLE_DDL = [
     SQL_CREATE_PREDICTIONS,
     SQL_CREATE_OPERATIONAL_CASES,
     SQL_CREATE_PATROL_DISPATCHES,
+    SQL_CREATE_CASE_OUTCOMES,
 ]
+

@@ -340,6 +340,65 @@ class EvidenceExportResponse(BaseModel):
     model_provenance: Optional[Dict[str, Any]] = None
 
 
+# ==============================================================================
+# 2b. INCIDENT OUTCOME & FEEDBACK LOOP SCHEMAS
+# ==============================================================================
+VALID_OUTCOME_STATUSES = {
+    "INTERCEPTED_AT_PREDICTED_ATM",
+    "INTERCEPTED_AT_OTHER_ATM",
+    "NO_CASHOUT",
+    "FALSE_ALERT",
+    "UNRESOLVED",
+}
+
+
+class CaseOutcomeCreateRequest(BaseModel):
+    outcome_status: str = Field(
+        ...,
+        description="Recorded operational incident outcome (INTERCEPTED_AT_PREDICTED_ATM, INTERCEPTED_AT_OTHER_ATM, NO_CASHOUT, FALSE_ALERT, UNRESOLVED)",
+    )
+    actual_atm_id: Optional[str] = Field(default=None, description="Actual ATM where cash-out occurred or was intercepted, if known")
+    notes: Optional[str] = Field(default="", description="Investigator outcome and post-intervention debrief notes")
+    investigator_id: Optional[str] = Field(default="INV-DESK-01", description="Investigator or unit callsign logging outcome")
+    auto_resolve_case: bool = Field(default=True, description="Whether to automatically advance case lifecycle to RESOLVED")
+
+    @field_validator("outcome_status")
+    @classmethod
+    def validate_outcome_status(cls, v: str) -> str:
+        clean_v = v.strip().upper() if v else ""
+        if clean_v not in VALID_OUTCOME_STATUSES:
+            raise ValueError(
+                f"Invalid outcome_status '{v}'. Allowed outcomes: {', '.join(sorted(VALID_OUTCOME_STATUSES))}"
+            )
+        return clean_v
+
+
+class CaseOutcomeResponse(BaseModel):
+    outcome_id: str
+    case_id: str
+    prediction_id: str
+    dispatch_id: Optional[str] = None
+    outcome_status: str
+    predicted_atm_id: str
+    actual_atm_id: Optional[str] = None
+    is_spatial_hit: bool
+    recorded_timestamp: str
+    notes: Optional[str] = ""
+    investigator_id: Optional[str] = "INV-DESK-01"
+
+
+class OutcomeMetricsResponse(BaseModel):
+    total_outcomes_recorded: int
+    predicted_atm_match_count: int
+    prediction_hit_rate_pct: float
+    interception_success_count: int
+    interception_rate_pct: float
+    false_alert_count: int
+    false_alert_rate_pct: float
+    outcome_breakdown: Dict[str, int]
+
+
+
 class PlaybookRequest(BaseModel):
     prediction_id: Optional[str] = None
     predicted_atm_id: str

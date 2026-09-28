@@ -35,9 +35,11 @@ from backend.app.main import (
     generic_exception_handler,
     get_case_details,
     get_case_dispatch_endpoint,
+    get_case_outcome_endpoint,
     get_dashboard_stats,
     get_emerging_clusters,
     get_model_information,
+    get_outcome_metrics_endpoint,
     get_repeated_convergences,
     get_zone_hotspots,
     health_check,
@@ -45,9 +47,11 @@ from backend.app.main import (
     list_cases,
     list_complaints,
     list_dispatches_endpoint,
+    list_outcomes_endpoint,
     list_predictions,
     ml_engine,
     predict_cashout_location,
+    record_case_outcome_endpoint,
     serve_dashboard,
     update_case_status,
     validation_exception_handler,
@@ -73,6 +77,13 @@ from backend.app.dispatch_engine import (
     get_dispatch_by_case_id,
     list_patrol_dispatches,
 )
+from backend.app.outcome_engine import (
+    VALID_OUTCOME_STATUSES,
+    compute_outcome_metrics,
+    get_outcome_by_case_id,
+    list_case_outcomes,
+    record_or_update_case_outcome,
+)
 from backend.app.cluster_engine import detect_emerging_clusters
 from backend.app.convergence_engine import (
     compute_atm_convergence_score,
@@ -83,10 +94,13 @@ from backend.app.database import get_db_connection, verify_database_readiness
 from backend.app.ml_engine import compute_intervention_priority
 from backend.app.playbook_engine import generate_investigator_playbook
 from backend.app.schemas import (
+    CaseOutcomeCreateRequest,
+    CaseOutcomeResponse,
     CaseStatusUpdateRequest,
     ComplaintCreate,
     DispatchCreateRequest,
     DispatchResponse,
+    OutcomeMetricsResponse,
     PlaybookRequest,
     PredictionRequest,
 )
@@ -824,7 +838,8 @@ def test_convergence_score_helpers_bounds():
 
 @pytest.fixture(autouse=True)
 def clean_alert_test_predictions():
-    """Cleans up isolated test prediction, dispatch, and case records before and after each test."""
+    """Cleans up isolated test prediction, dispatch, outcome, and case records before and after each test."""
+    clean_outcomes_sql = "DELETE FROM case_outcomes;"
     clean_dispatches_sql = "DELETE FROM patrol_dispatches;"
     clean_cases_sql = """
         DELETE FROM operational_cases 
@@ -839,11 +854,13 @@ def clean_alert_test_predictions():
         WHERE complaint_id != 'CMP-INIT-001';
     """
     with get_db_connection() as conn:
+        conn.execute(clean_outcomes_sql)
         conn.execute(clean_dispatches_sql)
         conn.execute(clean_cases_sql)
         conn.execute(clean_sql)
     yield
     with get_db_connection() as conn:
+        conn.execute(clean_outcomes_sql)
         conn.execute(clean_dispatches_sql)
         conn.execute(clean_cases_sql)
         conn.execute(clean_sql)
@@ -1943,6 +1960,245 @@ def test_case_evidence_export_nonexistent_case():
     with pytest.raises(HTTPException) as exc_info:
         export_case_evidence_endpoint(case_id="CASE-00000000-NONEXIST")
     assert exc_info.value.status_code == 404
+
+
+# ==============================================================================
+# 13. INCIDENT OUTCOME LOGGING & FEEDBACK LOOP TESTS
+# ==============================================================================
+
+def test_record_case_outcome_predicted_atm_hit():
+    """
+    Verifies that an investigator can record a verified ground truth outcome,
+    confirming a spatial hit when intercepted at the predicted ATM, and auto-resolving the case.
+    """
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=80000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=25.0,
+        incident_hour=15,
+        incident_day_of_week=4,
+        complaint_id="CMP-TEST-OUTCOME-HIT-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    # Dispatch patrol
+    dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-WEST-02"),
+    )
+
+    # Record outcome as spatial hit
+    outcome_req = CaseOutcomeCreateRequest(
+        outcome_status="INTERCEPTED_AT_PREDICTED_ATM",
+        notes="Suspect intercepted at predicted dispenser during tactical window. Seized 80,000 INR.",
+        investigator_id="INV-WEST-01",
+        auto_resolve_case=True,
+    )
+    out = record_case_outcome_endpoint(case_id=case_id, request=outcome_req)
+
+    assert out["outcome_id"].startswith("OUT-")
+    assert out["case_id"] == case_id
+    assert out["outcome_status"] == "INTERCEPTED_AT_PREDICTED_ATM"
+    assert out["predicted_atm_id"] == pred_res["predicted_atm_id"]
+    assert out["actual_atm_id"] == pred_res["predicted_atm_id"]
+    assert out["is_spatial_hit"] is True
+    assert out["investigator_id"] == "INV-WEST-01"
+    assert "80,000" in out["notes"]
+
+    # Verify case lifecycle auto-advanced to RESOLVED
+    c = get_case_details(case_id)
+    assert c["case_status"] == "RESOLVED"
+
+
+def test_record_case_outcome_other_atm():
+    """
+    Verifies recording an interception at an adjacent/different ATM,
+    marking is_spatial_hit=False while capturing the actual cash-out location.
+    """
+    req = PredictionRequest(
+        crime_category="PHISHING_UPI",
+        reported_amount=40000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_HDFC_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_NORTH",
+        reporting_delay_mins=18.0,
+        incident_hour=18,
+        incident_day_of_week=5,
+        complaint_id="CMP-TEST-OUTCOME-OTHER-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    outcome_req = CaseOutcomeCreateRequest(
+        outcome_status="INTERCEPTED_AT_OTHER_ATM",
+        actual_atm_id="ATM-NO-012",
+        notes="Target diverted to secondary kiosk 400m away.",
+        auto_resolve_case=True,
+    )
+    out = record_case_outcome_endpoint(case_id=case_id, request=outcome_req)
+
+    assert out["outcome_status"] == "INTERCEPTED_AT_OTHER_ATM"
+    assert out["actual_atm_id"] == "ATM-NO-012"
+    # If predicted ATM was not ATM-NO-012, is_spatial_hit must be False
+    if pred_res["predicted_atm_id"] != "ATM-NO-012":
+        assert out["is_spatial_hit"] is False
+
+
+def test_record_case_outcome_invalid_status_rejected():
+    """
+    Verifies that invalid outcome status values are rejected by schema validation.
+    """
+    with pytest.raises(Exception):
+        CaseOutcomeCreateRequest(
+            outcome_status="UNKNOWN_OUTCOME",
+            notes="Invalid status test",
+        )
+
+
+def test_outcome_auto_resolves_case_flag():
+    """
+    Verifies the behavior of the auto_resolve_case parameter.
+    """
+    req = PredictionRequest(
+        crime_category="LOAN_SCAM",
+        reported_amount=25000.0,
+        payment_channel="NEFT",
+        mule_bank_code="BANK_PNB_SYNTH",
+        mule_account_tier="STANDARD",
+        mule_branch_zone="ZONE_SOUTH",
+        reporting_delay_mins=50.0,
+        incident_hour=11,
+        incident_day_of_week=2,
+        complaint_id="CMP-TEST-OUTCOME-FLAG-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    # Record outcome with auto_resolve_case=False
+    outcome_req = CaseOutcomeCreateRequest(
+        outcome_status="NO_CASHOUT",
+        notes="Preliminary check; case kept active for further analysis.",
+        auto_resolve_case=False,
+    )
+    record_case_outcome_endpoint(case_id=case_id, request=outcome_req)
+
+    c = get_case_details(case_id)
+    assert c["case_status"] == "NEW_ALERT"
+
+
+def test_get_case_outcome_and_list_endpoints():
+    """
+    Verifies GET /api/cases/{case_id}/outcome and GET /api/outcomes endpoints,
+    including 404 for cases without recorded outcomes.
+    """
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=65000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_EAST",
+        reporting_delay_mins=20.0,
+        incident_hour=14,
+        incident_day_of_week=3,
+        complaint_id="CMP-TEST-OUTCOME-READ-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    # 1. 404 before outcome is recorded
+    with pytest.raises(HTTPException) as exc_info:
+        get_case_outcome_endpoint(case_id)
+    assert exc_info.value.status_code == 404
+
+    # 2. Record outcome
+    record_case_outcome_endpoint(
+        case_id=case_id,
+        request=CaseOutcomeCreateRequest(outcome_status="FALSE_ALERT", notes="Benign transfer confirmed with victim"),
+    )
+
+    # 3. Retrieve outcome
+    out = get_case_outcome_endpoint(case_id)
+    assert out["case_id"] == case_id
+    assert out["outcome_status"] == "FALSE_ALERT"
+
+    # 4. List outcomes
+    all_outcomes = list_outcomes_endpoint(limit=10)
+    assert isinstance(all_outcomes, list)
+    assert any(o["case_id"] == case_id for o in all_outcomes)
+
+
+def test_outcome_metrics_calculation():
+    """
+    Verifies GET /api/outcomes/metrics calculates aggregated prediction hit rate,
+    match count, interception rate, and outcome distribution.
+    """
+    # Create two distinct cases with different outcomes
+    req1 = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=75000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=15.0,
+        incident_hour=15,
+        incident_day_of_week=4,
+        complaint_id="CMP-TEST-METRICS-01",
+    )
+    c1 = predict_cashout_location(req1)["case_id"]
+    record_case_outcome_endpoint(
+        case_id=c1,
+        request=CaseOutcomeCreateRequest(outcome_status="INTERCEPTED_AT_PREDICTED_ATM"),
+    )
+
+    req2 = PredictionRequest(
+        crime_category="PHISHING_UPI",
+        reported_amount=35000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_HDFC_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_NORTH",
+        reporting_delay_mins=20.0,
+        incident_hour=17,
+        incident_day_of_week=5,
+        complaint_id="CMP-TEST-METRICS-02",
+    )
+    c2 = predict_cashout_location(req2)["case_id"]
+    record_case_outcome_endpoint(
+        case_id=c2,
+        request=CaseOutcomeCreateRequest(outcome_status="FALSE_ALERT"),
+    )
+
+    metrics = get_outcome_metrics_endpoint()
+    assert metrics["total_outcomes_recorded"] >= 2
+    assert metrics["predicted_atm_match_count"] >= 1
+    assert metrics["prediction_hit_rate_pct"] > 0.0
+    assert metrics["interception_success_count"] >= 1
+    assert metrics["interception_rate_pct"] > 0.0
+    assert metrics["false_alert_count"] >= 1
+    assert isinstance(metrics["outcome_breakdown"], dict)
+    for expected_key in VALID_OUTCOME_STATUSES:
+        assert expected_key in metrics["outcome_breakdown"]
+
+
+def test_record_outcome_nonexistent_case_404():
+    """
+    Verifies that attempting to record an outcome for an invalid case ID raises HTTP 404.
+    """
+    with pytest.raises(HTTPException) as exc_info:
+        record_case_outcome_endpoint(
+            case_id="CASE-00000000-NONEXIST",
+            request=CaseOutcomeCreateRequest(outcome_status="UNRESOLVED"),
+        )
+    assert exc_info.value.status_code == 404
+
 
 
 

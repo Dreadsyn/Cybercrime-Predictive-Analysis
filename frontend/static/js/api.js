@@ -147,6 +147,27 @@ export const API = {
   async getEvidence(caseId, format = "json") {
     return await request(`/cases/${encodeURIComponent(caseId)}/evidence?format=${encodeURIComponent(format)}`);
   },
+
+  // 12. Incident Outcome Logging & Interception Feedback Loop (Feature)
+  async recordCaseOutcome(caseId, payload = {}) {
+    return await request(`/cases/${encodeURIComponent(caseId)}/outcome`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getCaseOutcome(caseId) {
+    return await request(`/cases/${encodeURIComponent(caseId)}/outcome`);
+  },
+
+  async getOutcomes(limit = 25) {
+    return await request(`/outcomes?limit=${limit}`);
+  },
+
+  async getOutcomeMetrics() {
+    return await request("/outcomes/metrics");
+  },
 };
+
 
 

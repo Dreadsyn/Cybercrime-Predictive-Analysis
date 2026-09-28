@@ -284,6 +284,14 @@ def compile_case_evidence_packet(
     # 4. Patrol Dispatch Record
     dispatch_dict = get_dispatch_by_case_id(db_conn, case_id)
 
+    # 4b. Recorded Case Outcome
+    outcome_dict = None
+    try:
+        from backend.app.outcome_engine import get_outcome_by_case_id
+        outcome_dict = get_outcome_by_case_id(db_conn, case_id)
+    except Exception:
+        outcome_dict = None
+
     # 5. Convergence Intelligence
     convergences = []
     try:
@@ -340,6 +348,7 @@ def compile_case_evidence_packet(
         "export_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "case": case,
         "dispatch": dispatch_dict,
+        "outcome": outcome_dict,
         "prediction": pred_dict,
         "target_atm": atm_dict,
         "top_candidates": top_candidates,
@@ -387,6 +396,16 @@ def export_case_evidence_csv(evidence: Dict[str, Any]) -> str:
     writer.writerow(["PATROL_DISPATCH", "Dispatch Status", d.get("dispatch_status", "READY")])
     writer.writerow(["PATROL_DISPATCH", "Dispatched Timestamp", d.get("dispatched_timestamp", "")])
     writer.writerow(["PATROL_DISPATCH", "Tactical Brief", d.get("tactical_brief", "")])
+
+    # Outcome
+    o = evidence.get("outcome") or {}
+    if o:
+        writer.writerow(["RECORDED_OUTCOME", "Outcome ID", o.get("outcome_id", "")])
+        writer.writerow(["RECORDED_OUTCOME", "Status", o.get("outcome_status", "")])
+        writer.writerow(["RECORDED_OUTCOME", "Actual ATM", o.get("actual_atm_id", "N/A")])
+        writer.writerow(["RECORDED_OUTCOME", "Spatial Hit", "YES" if o.get("is_spatial_hit") else "NO"])
+        writer.writerow(["RECORDED_OUTCOME", "Recorded Timestamp", o.get("recorded_timestamp", "")])
+        writer.writerow(["RECORDED_OUTCOME", "Investigator Notes", o.get("notes", "")])
 
     # Top Candidates
     for idx, cand in enumerate(evidence.get("top_candidates", []), 1):

@@ -50,8 +50,16 @@ from backend.app.dispatch_engine import (
     get_dispatch_by_case_id,
     list_patrol_dispatches,
 )
+from backend.app.outcome_engine import (
+    compute_outcome_metrics,
+    get_outcome_by_case_id,
+    list_case_outcomes,
+    record_or_update_case_outcome,
+)
 from backend.app.schemas import (
     ATMLocationResponse,
+    CaseOutcomeCreateRequest,
+    CaseOutcomeResponse,
     CaseResponse,
     CaseStatusUpdateRequest,
     ClusterResponse,
@@ -63,6 +71,7 @@ from backend.app.schemas import (
     HotspotZone,
     InvestigatorPlaybook,
     ModelInfoResponse,
+    OutcomeMetricsResponse,
     PlaybookRequest,
     PredictionRequest,
     PredictionResponse,
@@ -586,6 +595,62 @@ def export_case_evidence_endpoint(
         return Response(content=json_content, media_type="application/json", headers=headers)
 
     return evidence
+
+
+# ==============================================================================
+# 5c. INCIDENT OUTCOME LOGGING & FEEDBACK LOOP ENDPOINTS
+# ==============================================================================
+@app.post("/api/cases/{case_id}/outcome", response_model=CaseOutcomeResponse, tags=["Outcome Feedback Loop"])
+def record_case_outcome_endpoint(case_id: str, request: CaseOutcomeCreateRequest):
+    """
+    Records or updates the verified ground truth outcome for an operational case.
+    Verifies whether the actual cash-out matched the predicted ATM and
+    optionally resolves the case lifecycle.
+    """
+    with get_db_connection() as conn:
+        outcome = record_or_update_case_outcome(
+            db_conn=conn,
+            case_id=case_id,
+            outcome_status_val=request.outcome_status,
+            actual_atm_id=request.actual_atm_id,
+            notes=request.notes or "",
+            investigator_id=request.investigator_id or "INV-DESK-01",
+            auto_resolve_case=request.auto_resolve_case,
+        )
+    return outcome
+
+
+@app.get("/api/cases/{case_id}/outcome", response_model=CaseOutcomeResponse, tags=["Outcome Feedback Loop"])
+def get_case_outcome_endpoint(case_id: str):
+    """Retrieves the recorded operational outcome for a specific case."""
+    with get_db_connection() as conn:
+        outcome = get_outcome_by_case_id(conn, case_id)
+    if not outcome:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No outcome recorded for case '{case_id}'.",
+        )
+    return outcome
+
+
+@app.get("/api/outcomes", response_model=List[CaseOutcomeResponse], tags=["Outcome Feedback Loop"])
+def list_outcomes_endpoint(limit: int = Query(25, ge=1, le=100)):
+    """Lists recent operational case outcomes."""
+    actual_limit = limit if isinstance(limit, int) else getattr(limit, "default", 25)
+    with get_db_connection() as conn:
+        outcomes = list_case_outcomes(conn, limit=actual_limit)
+    return outcomes
+
+
+@app.get("/api/outcomes/metrics", response_model=OutcomeMetricsResponse, tags=["Outcome Feedback Loop"])
+def get_outcome_metrics_endpoint():
+    """
+    Computes aggregate operational feedback metrics from recorded case outcomes:
+    prediction hit rate, predicted-vs-actual ATM match count, and interception success rate.
+    """
+    with get_db_connection() as conn:
+        metrics = compute_outcome_metrics(conn)
+    return metrics
 
 
 @app.post("/api/playbook", response_model=InvestigatorPlaybook, status_code=status.HTTP_200_OK, tags=["Predictive Analytics"])

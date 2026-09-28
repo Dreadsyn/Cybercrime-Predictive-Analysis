@@ -475,15 +475,17 @@ function renderPredictionResult(result) {
   const caseIdBadge = document.getElementById("predCaseIdBadge");
   const caseStatusBadge = document.getElementById("predCaseStatusBadge");
   const dispatchBadge = document.getElementById("predDispatchBadge");
+  const outcomeBadge = document.getElementById("predOutcomeBadge");
   const btnTransition = document.getElementById("btnCaseTransition");
   const transitionText = document.getElementById("caseTransitionText");
   const btnViewDispatch = document.getElementById("btnViewDispatch");
+  const btnRecordOutcome = document.getElementById("btnRecordOutcome");
   const btnExportEvidence = document.getElementById("btnExportEvidence");
   const evidenceDropdown = document.getElementById("evidenceDropdown");
   const btnExportJson = document.getElementById("btnExportJson");
   const btnExportCsv = document.getElementById("btnExportCsv");
 
-  function updateCaseControls(caseId, status, dispatchInfo = null) {
+  function updateCaseControls(caseId, status, dispatchInfo = null, outcomeInfo = null) {
     if (caseIdBadge) {
       if (caseId) {
         caseIdBadge.innerText = caseId;
@@ -521,8 +523,41 @@ function renderPredictionResult(result) {
       }
     }
 
+    if (outcomeBadge) {
+      if (!caseId || !outcomeInfo) {
+        outcomeBadge.style.display = "none";
+      } else {
+        const st = outcomeInfo.outcome_status;
+        let badgeClass = "outcome-badge";
+        let label = st.replace("INTERCEPTED_AT_", "").replace(/_/g, " ");
+        if (outcomeInfo.is_spatial_hit) {
+          badgeClass += " outcome-hit";
+          label = "HIT: PREDICTED ATM";
+        } else if (st === "INTERCEPTED_AT_OTHER_ATM") {
+          badgeClass += " outcome-other";
+          label = "HIT: OTHER ATM";
+        } else if (st === "FALSE_ALERT") {
+          badgeClass += " outcome-false";
+          label = "FALSE ALERT";
+        } else if (st === "NO_CASHOUT") {
+          badgeClass += " outcome-false";
+          label = "NO CASHOUT";
+        } else {
+          badgeClass += " outcome-unresolved";
+          label = "UNRESOLVED";
+        }
+        outcomeBadge.className = badgeClass;
+        outcomeBadge.innerText = label;
+        outcomeBadge.style.display = "inline-flex";
+      }
+    }
+
     if (btnViewDispatch) {
       btnViewDispatch.style.display = caseId ? "inline-flex" : "none";
+    }
+
+    if (btnRecordOutcome) {
+      btnRecordOutcome.style.display = caseId ? "inline-flex" : "none";
     }
 
     if (btnExportEvidence) {
@@ -559,10 +594,19 @@ function renderPredictionResult(result) {
   updateCaseControls(result.case_id, result.case_status);
 
   // Load existing dispatch if case already has one
-  if (result.case_id && result.case_status === "PATROL_DISPATCHED") {
+  if (result.case_id && (result.case_status === "PATROL_DISPATCHED" || result.case_status === "RESOLVED")) {
     API.getCaseDispatch(result.case_id)
       .then(disp => {
         if (disp) updateCaseControls(result.case_id, result.case_status, disp);
+      })
+      .catch(() => {});
+  }
+
+  // Load existing outcome if case already has one
+  if (result.case_id) {
+    API.getCaseOutcome(result.case_id)
+      .then(outcome => {
+        if (outcome) updateCaseControls(result.case_id, result.case_status, null, outcome);
       })
       .catch(() => {});
   }
@@ -575,19 +619,8 @@ function renderPredictionResult(result) {
         // Open Dispatch Modal to inspect tactical route & confirm dispatch
         openDispatchModal(result);
       } else if (currentStatus === "PATROL_DISPATCHED") {
-        // Mark case as resolved
-        btnTransition.disabled = true;
-        if (transitionText) transitionText.innerText = "Resolving...";
-        try {
-          const updateResp = await API.updateCaseStatus(result.case_id, "RESOLVED", "Patrol intervention completed and cashout averted.");
-          result.case_status = updateResp.case_status;
-          updateCaseControls(result.case_id, result.case_status);
-          showToast(`Case ${result.case_id} marked RESOLVED`, "success");
-          await loadAlertHistory();
-        } catch (err) {
-          showToast(`Failed to update case status: ${err.message}`, "error");
-          updateCaseControls(result.case_id, result.case_status);
-        }
+        // Open Outcome Modal so investigator can log ground truth and resolve case
+        openOutcomeModal(result);
       }
     };
   }
@@ -596,6 +629,13 @@ function renderPredictionResult(result) {
   if (btnViewDispatch) {
     btnViewDispatch.onclick = () => {
       openDispatchModal(result);
+    };
+  }
+
+  // Action: Open Outcome Logging Modal directly
+  if (btnRecordOutcome) {
+    btnRecordOutcome.onclick = () => {
+      openOutcomeModal(result);
     };
   }
 
@@ -1122,6 +1162,7 @@ function setupModalListeners() {
   });
 
   setupDispatchModalListeners();
+  setupOutcomeModalListeners();
 }
 
 /**
@@ -1265,6 +1306,205 @@ function setupDispatchModalListeners() {
     });
   }
 }
+
+/**
+ * Opens and populates the Incident Outcome & Feedback modal.
+ */
+async function openOutcomeModal(result) {
+  const modal = document.getElementById("outcomeModal");
+  if (!modal || !result.case_id) return;
+
+  const caseIdEl = document.getElementById("outcomeModalCaseId");
+  const predAtmEl = document.getElementById("outcomeModalPredictedAtm");
+  const caseStatusEl = document.getElementById("outcomeModalCurrentStatus");
+  const unitEl = document.getElementById("outcomeModalUnit");
+  const statusSelect = document.getElementById("outcomeStatusSelect");
+  const actualAtmInput = document.getElementById("outcomeActualAtmInput");
+  const notesInput = document.getElementById("outcomeNotesInput");
+  const feedbackText = document.getElementById("outcomeHitFeedbackText");
+  const feedbackBanner = document.getElementById("outcomeHitFeedback");
+  const confirmBtn = document.getElementById("btnConfirmOutcomeModal");
+
+  caseIdEl.innerText = result.case_id;
+  predAtmEl.innerText = result.predicted_atm_id || "--";
+  caseStatusEl.innerText = result.case_status || "PATROL_DISPATCHED";
+  caseStatusEl.className = `case-status-badge status-${(result.case_status || "patrol_dispatched").toLowerCase()}`;
+
+  actualAtmInput.value = result.predicted_atm_id || "";
+  notesInput.value = "";
+  statusSelect.value = "INTERCEPTED_AT_PREDICTED_ATM";
+
+  function updateFeedbackBanner() {
+    const val = statusSelect.value;
+    if (val === "INTERCEPTED_AT_PREDICTED_ATM") {
+      actualAtmInput.value = result.predicted_atm_id || "";
+      feedbackBanner.style.background = "#ecfdf5";
+      feedbackBanner.style.borderColor = "#a7f3d0";
+      feedbackBanner.style.color = "#065f46";
+      feedbackText.innerText = "Confirmed spatial hit on predicted ATM. Reinforces geospatial accuracy.";
+    } else if (val === "INTERCEPTED_AT_OTHER_ATM") {
+      feedbackBanner.style.background = "#eff6ff";
+      feedbackBanner.style.borderColor = "#bfdbfe";
+      feedbackBanner.style.color = "#1e40af";
+      feedbackText.innerText = "Interception at adjacent ATM corridor. Spatial candidate cluster match.";
+    } else if (val === "NO_CASHOUT") {
+      feedbackBanner.style.background = "#f8fafc";
+      feedbackBanner.style.borderColor = "#e2e8f0";
+      feedbackBanner.style.color = "#475569";
+      feedbackText.innerText = "No cash-out attempt observed during target intervention window.";
+    } else if (val === "FALSE_ALERT") {
+      feedbackBanner.style.background = "#fff1f2";
+      feedbackBanner.style.borderColor = "#fecdd3";
+      feedbackBanner.style.color = "#9f1239";
+      feedbackText.innerText = "Benign or non-fraudulent transaction profile. Flags priority calibration.";
+    } else {
+      feedbackBanner.style.background = "#f3f4f6";
+      feedbackBanner.style.borderColor = "#e5e7eb";
+      feedbackBanner.style.color = "#4b5563";
+      feedbackText.innerText = "Suspect evaded perimeter before field unit arrival.";
+    }
+  }
+
+  statusSelect.onchange = updateFeedbackBanner;
+  updateFeedbackBanner();
+
+  // Load dispatch info if available
+  try {
+    const disp = await API.getCaseDispatch(result.case_id);
+    unitEl.innerText = disp ? `${disp.patrol_unit_assigned} (${disp.dispatch_status})` : "UNASSIGNED";
+  } catch {
+    unitEl.innerText = "UNASSIGNED";
+  }
+
+  // Load outcome metrics strip
+  try {
+    const metrics = await API.getOutcomeMetrics();
+    const countEl = document.getElementById("kpiOutcomeCount");
+    const hitsEl = document.getElementById("kpiOutcomeHits");
+    const rateEl = document.getElementById("kpiOutcomeHitRate");
+    if (countEl) countEl.innerText = metrics.total_outcomes_recorded;
+    if (hitsEl) hitsEl.innerText = metrics.predicted_atm_match_count;
+    if (rateEl) rateEl.innerText = `${metrics.prediction_hit_rate_pct}%`;
+  } catch (err) {
+    console.warn("Could not load outcome metrics:", err);
+  }
+
+  // Check if outcome already recorded
+  try {
+    const existing = await API.getCaseOutcome(result.case_id);
+    if (existing) {
+      statusSelect.value = existing.outcome_status;
+      if (existing.actual_atm_id) actualAtmInput.value = existing.actual_atm_id;
+      if (existing.notes) notesInput.value = existing.notes;
+      confirmBtn.innerText = "Update Outcome";
+      updateFeedbackBanner();
+    } else {
+      confirmBtn.innerText = "Record Outcome & Resolve";
+    }
+  } catch {
+    confirmBtn.innerText = "Record Outcome & Resolve";
+  }
+
+  modal.style.display = "flex";
+}
+
+function setupOutcomeModalListeners() {
+  const modal = document.getElementById("outcomeModal");
+  const closeBtn = document.getElementById("closeOutcomeModalBtn");
+  const cancelBtn = document.getElementById("btnCancelOutcomeModal");
+  const confirmBtn = document.getElementById("btnConfirmOutcomeModal");
+  const statusSelect = document.getElementById("outcomeStatusSelect");
+  const actualAtmInput = document.getElementById("outcomeActualAtmInput");
+  const notesInput = document.getElementById("outcomeNotesInput");
+
+  if (!modal) return;
+
+  const closeModal = () => {
+    modal.style.display = "none";
+  };
+
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+  if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
+
+  window.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal.style.display === "flex") {
+      closeModal();
+    }
+  });
+
+  if (confirmBtn) {
+    confirmBtn.addEventListener("click", async () => {
+      const res = window.currentActivePrediction;
+      if (!res || !res.case_id) return;
+
+      const outcomeStatus = statusSelect.value;
+      const actualAtm = actualAtmInput.value.trim() || null;
+      const notes = notesInput.value.trim();
+
+      confirmBtn.disabled = true;
+      const origText = confirmBtn.innerText;
+      confirmBtn.innerText = "Saving Outcome...";
+      try {
+        const out = await API.recordCaseOutcome(res.case_id, {
+          outcome_status: outcomeStatus,
+          actual_atm_id: actualAtm,
+          notes: notes,
+          auto_resolve_case: true,
+        });
+        res.case_status = "RESOLVED";
+        closeModal();
+        showToast(`Incident outcome recorded: ${out.outcome_status}`, "success");
+
+        // Update hero badges
+        const caseStatusBadge = document.getElementById("predCaseStatusBadge");
+        if (caseStatusBadge) {
+          caseStatusBadge.innerText = "RESOLVED";
+          caseStatusBadge.className = "case-status-badge status-resolved";
+        }
+        const outcomeBadge = document.getElementById("predOutcomeBadge");
+        if (outcomeBadge) {
+          outcomeBadge.style.display = "inline-flex";
+          if (out.is_spatial_hit) {
+            outcomeBadge.className = "outcome-badge outcome-hit";
+            outcomeBadge.innerText = "HIT: PREDICTED ATM";
+          } else if (out.outcome_status === "INTERCEPTED_AT_OTHER_ATM") {
+            outcomeBadge.className = "outcome-badge outcome-other";
+            outcomeBadge.innerText = "HIT: OTHER ATM";
+          } else if (out.outcome_status === "FALSE_ALERT") {
+            outcomeBadge.className = "outcome-badge outcome-false";
+            outcomeBadge.innerText = "FALSE ALERT";
+          } else if (out.outcome_status === "NO_CASHOUT") {
+            outcomeBadge.className = "outcome-badge outcome-false";
+            outcomeBadge.innerText = "NO CASHOUT";
+          } else {
+            outcomeBadge.className = "outcome-badge outcome-unresolved";
+            outcomeBadge.innerText = "UNRESOLVED";
+          }
+        }
+        const btnTransition = document.getElementById("btnCaseTransition");
+        const transitionText = document.getElementById("caseTransitionText");
+        if (btnTransition && transitionText) {
+          btnTransition.disabled = true;
+          btnTransition.style.opacity = "0.6";
+          btnTransition.style.cursor = "default";
+          transitionText.innerText = "✓ Resolved";
+        }
+
+        await loadAlertHistory();
+      } catch (err) {
+        showToast(`Failed to record outcome: ${err.message}`, "error");
+      } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.innerText = origText;
+      }
+    });
+  }
+}
+
 
 
 /**

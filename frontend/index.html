@@ -225,11 +225,15 @@
             <span id="predCaseIdBadge" class="case-id-badge" style="display:none;"></span>
             <span id="predCaseStatusBadge" class="case-status-badge status-new_alert" style="display:none;">NEW_ALERT</span>
             <span id="predDispatchBadge" class="dispatch-badge" style="display:none;">READY</span>
+            <span id="predOutcomeBadge" class="outcome-badge" style="display:none;">INTERCEPTED</span>
             <span id="predRiskBadge" class="risk-tag risk-critical" style="display:none;">CRITICAL RISK</span>
           </div>
           <div class="hero-header-actions">
             <button type="button" id="btnCaseTransition" class="btn-case-transition" style="display:none;" title="Advance Case Lifecycle">
               <span id="caseTransitionText">Dispatch Patrol</span>
+            </button>
+            <button type="button" id="btnRecordOutcome" class="btn-action-ghost" style="display:none;" title="Record Actual Incident Outcome">
+              <span>&#9989; Log Outcome</span>
             </button>
             <button type="button" id="btnViewDispatch" class="btn-action-ghost" style="display:none;" title="View Field Dispatch Details">
               <span>&#128659; Dispatch</span>
@@ -684,6 +688,54 @@
         <div class="modal-actions-row" style="margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px;">
           <button type="button" id="btnCancelDispatchModal" class="btn-action-ghost">Close</button>
           <button type="button" id="btnConfirmDispatchModal" class="btn-case-transition">Dispatch Unit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Incident Outcome Logging & Interception Feedback -->
+  <div id="outcomeModal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-title-row">
+        <h3 style="font-size: 1rem; font-weight: 700;">Record Incident Outcome &amp; Interception Feedback</h3>
+        <button id="closeOutcomeModalBtn" class="btn-close-modal" type="button">&times;</button>
+      </div>
+      <div class="outcome-modal-content">
+        <div class="outcome-metrics-strip" id="outcomeMetricsStrip" style="display:flex; justify-content:space-between; background:var(--bg-card-subtle); border:1px solid var(--border-subtle); padding:6px 10px; border-radius:4px; margin-bottom:12px; font-size:0.72rem;">
+          <div>Outcomes Logged: <b id="kpiOutcomeCount">0</b></div>
+          <div>Predicted ATM Hits: <b id="kpiOutcomeHits">0</b></div>
+          <div>Spatial Hit Rate: <b id="kpiOutcomeHitRate">0.0%</b></div>
+        </div>
+        <div class="dispatch-info-grid">
+          <div><b>Case ID:</b> <span id="outcomeModalCaseId">--</span></div>
+          <div><b>Predicted ATM:</b> <span id="outcomeModalPredictedAtm">--</span></div>
+          <div><b>Current Status:</b> <span id="outcomeModalCurrentStatus">--</span></div>
+          <div><b>Dispatch Unit:</b> <span id="outcomeModalUnit">--</span></div>
+        </div>
+        <div class="outcome-input-row" style="margin-top: 12px;">
+          <label for="outcomeStatusSelect" style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 4px;">Operational Outcome:</label>
+          <select id="outcomeStatusSelect" class="mini-select" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: 4px; box-sizing: border-box;">
+            <option value="INTERCEPTED_AT_PREDICTED_ATM" selected>INTERCEPTED_AT_PREDICTED_ATM (Target Intercepted - Spatial Hit)</option>
+            <option value="INTERCEPTED_AT_OTHER_ATM">INTERCEPTED_AT_OTHER_ATM (Intercepted at Adjacent/Other ATM)</option>
+            <option value="NO_CASHOUT">NO_CASHOUT (No Cashout Attempted)</option>
+            <option value="FALSE_ALERT">FALSE_ALERT (False Alert / Benign Activity)</option>
+            <option value="UNRESOLVED">UNRESOLVED (Suspect Evaded / Unresolved)</option>
+          </select>
+        </div>
+        <div class="outcome-input-row" style="margin-top: 8px;">
+          <label for="outcomeActualAtmInput" style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 4px;">Actual Cash-Out ATM ID (if known / different):</label>
+          <input type="text" id="outcomeActualAtmInput" class="mini-text-input" placeholder="e.g. ATM-WE-048" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: 4px; box-sizing: border-box;">
+        </div>
+        <div class="outcome-input-row" style="margin-top: 8px;">
+          <label for="outcomeNotesInput" style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 4px;">Investigator Debrief &amp; Outcome Notes:</label>
+          <textarea id="outcomeNotesInput" rows="2" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: 4px; box-sizing: border-box;" placeholder="Enter seizure amount, suspect details, or patrol notes..."></textarea>
+        </div>
+        <div class="outcome-feedback-banner" id="outcomeHitFeedback" style="margin-top: 10px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; padding: 8px 10px; border-radius: 4px; font-size: 0.75rem;">
+          <b>Prediction Verification:</b> <span id="outcomeHitFeedbackText">Confirmed spatial hit on predicted ATM.</span>
+        </div>
+        <div class="modal-actions-row" style="margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" id="btnCancelOutcomeModal" class="btn-action-ghost">Close</button>
+          <button type="button" id="btnConfirmOutcomeModal" class="btn-case-transition">Record Outcome &amp; Resolve</button>
         </div>
       </div>
     </div>
