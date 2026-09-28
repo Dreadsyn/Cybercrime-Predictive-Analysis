@@ -1172,5 +1172,143 @@ def test_list_predictions_includes_alert_lifecycle():
         assert "escalation_reason" in p
 
 
+# ==============================================================================
+# 10. MAP CONVERGENCE & VISUALIZATION TESTS
+# ==============================================================================
+
+def test_convergence_map_data_completeness():
+    """
+    Verifies that all convergences returned by GET /api/analytics/convergences
+    include complete geospatial coordinates and visual telemetry required for Leaflet map overlays.
+    """
+    res = get_repeated_convergences(
+        window_hours=168,
+        min_matches=2,
+        target_type="all",
+        zone=None,
+    )
+    assert isinstance(res, dict)
+    assert "convergences" in res
+    assert len(res["convergences"]) > 0
+
+    valid_severities = {"CRITICAL", "HIGH", "ELEVATED", "MODERATE"}
+    valid_types = {"ATM_CONVERGENCE", "ZONE_CONVERGENCE"}
+
+    for c in res["convergences"]:
+        # 1. Geospatial coordinates within Metropolitan Delhi operational bounds
+        assert "latitude" in c and isinstance(c["latitude"], (int, float))
+        assert "longitude" in c and isinstance(c["longitude"], (int, float))
+        assert 28.0 <= c["latitude"] <= 29.5
+        assert 76.5 <= c["longitude"] <= 78.0
+
+        # 2. Map styling attributes
+        assert c["convergence_type"] in valid_types
+        assert c["severity_level"] in valid_severities
+        assert 0 <= c["convergence_score"] <= 100
+        assert isinstance(c["target_id"], str) and len(c["target_id"]) > 0
+        assert isinstance(c["target_name"], str) and len(c["target_name"]) > 0
+        assert isinstance(c["reason"], str) and len(c["reason"]) > 0
+        assert isinstance(c["recommended_action"], str) and len(c["recommended_action"]) > 0
+        assert c["total_matches"] >= 2
+
+
+def test_atm_convergence_map_attributes():
+    """
+    Verifies that for every ATM_CONVERGENCE item, the latitude and longitude
+    match the exact physical database coordinates in atm_locations.
+    """
+    res = get_repeated_convergences(
+        window_hours=168,
+        min_matches=2,
+        target_type="atm",
+        zone=None,
+    )
+    atm_convs = [c for c in res["convergences"] if c["convergence_type"] == "ATM_CONVERGENCE"]
+    assert len(atm_convs) > 0
+
+    with get_db_connection() as conn:
+        for c in atm_convs:
+            atm_id = c["target_id"]
+            row = conn.execute(
+                "SELECT latitude, longitude FROM atm_locations WHERE atm_id = ?;",
+                (atm_id,),
+            ).fetchone()
+            assert row is not None
+            expected_lat = round(float(row["latitude"]), 6)
+            expected_lon = round(float(row["longitude"]), 6)
+            assert round(c["latitude"], 4) == round(expected_lat, 4)
+            assert round(c["longitude"], 4) == round(expected_lon, 4)
+            assert c["involved_atm_ids"] == [atm_id]
+
+
+def test_zone_convergence_map_attributes():
+    """
+    Verifies that for every ZONE_CONVERGENCE item, the latitude and longitude
+    match the administrative zone centroid coordinates, and multi-ATM IDs are listed.
+    """
+    from backend.app.convergence_engine import ZONE_CENTROIDS
+
+    res = get_repeated_convergences(
+        window_hours=168,
+        min_matches=2,
+        target_type="zone",
+        zone=None,
+    )
+    zone_convs = [c for c in res["convergences"] if c["convergence_type"] == "ZONE_CONVERGENCE"]
+    assert len(zone_convs) > 0
+
+    for c in zone_convs:
+        zid = c["zone_id"]
+        assert zid in ZONE_CENTROIDS
+        expected_lat, expected_lon = ZONE_CENTROIDS[zid]
+        assert round(c["latitude"], 4) == round(expected_lat, 4)
+        assert round(c["longitude"], 4) == round(expected_lon, 4)
+        assert isinstance(c["involved_atm_ids"], list)
+        assert len(c["involved_atm_ids"]) >= 1
+
+
+def test_convergence_filtering_for_map_sync():
+    """
+    Verifies that map sync filter queries return strictly the requested target_type
+    and zone, enabling reactive map layer re-rendering.
+    """
+    # 1. Target type ATM only
+    atm_res = get_repeated_convergences(target_type="atm", window_hours=168, min_matches=2)
+    for c in atm_res["convergences"]:
+        assert c["convergence_type"] == "ATM_CONVERGENCE"
+    assert atm_res["zone_convergences_count"] == 0
+
+    # 2. Target type Zone only
+    zone_res = get_repeated_convergences(target_type="zone", window_hours=168, min_matches=2)
+    for c in zone_res["convergences"]:
+        assert c["convergence_type"] == "ZONE_CONVERGENCE"
+    assert zone_res["atm_convergences_count"] == 0
+
+    # 3. Zone specific filter
+    west_res = get_repeated_convergences(target_type="all", zone="ZONE_WEST", window_hours=168, min_matches=2)
+    for c in west_res["convergences"]:
+        assert c["zone_id"] == "ZONE_WEST"
+
+
+def test_empty_convergence_map_response_structure():
+    """
+    Verifies that an empty convergence result (e.g. min_matches=9999)
+    preserves a valid, complete schema so the map controller clears tactical layers without crashing.
+    """
+    res = get_repeated_convergences(
+        window_hours=24,
+        min_matches=9999,
+        target_type="all",
+        zone=None,
+    )
+    assert res["total_convergences"] == 0
+    assert res["atm_convergences_count"] == 0
+    assert res["zone_convergences_count"] == 0
+    assert res["convergences"] == []
+    assert "window_start" in res
+    assert "window_end" in res
+
+
+
 
 

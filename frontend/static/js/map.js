@@ -8,6 +8,10 @@ let mapInstance = null;
 let atmMarkers = {};
 let targetHighlightLayer = null;
 let zonePolygons = [];
+let zoneLayers = {};
+let convergenceLayer = null;
+let convergenceMarkers = {};
+let currentConvergencesData = null;
 let currentZoneFilter = "ALL";
 let currentlySelectedAtmId = null;
 
@@ -18,6 +22,16 @@ const ZONE_CENTERS = {
   ZONE_EAST:    { lat: 28.6200, lon: 77.2900, name: "East Industrial Fringe", color: "#ea580c" },
   ZONE_WEST:    { lat: 28.6500, lon: 77.1000, name: "West Market Corridor", color: "#16a34a" },
 };
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 export const MapController = {
   init(containerId = "map") {
@@ -38,6 +52,9 @@ export const MapController = {
       maxZoom: 18,
     }).addTo(mapInstance);
 
+    // Dedicated tactical layer group for repeated convergence overlays
+    convergenceLayer = L.layerGroup().addTo(mapInstance);
+
     this.renderZones();
     this.setupPanelListeners();
     return mapInstance;
@@ -46,6 +63,7 @@ export const MapController = {
   renderZones() {
     zonePolygons.forEach(p => mapInstance.removeLayer(p));
     zonePolygons = [];
+    zoneLayers = {};
 
     Object.entries(ZONE_CENTERS).forEach(([zoneId, z]) => {
       const circle = L.circle([z.lat, z.lon], {
@@ -64,6 +82,22 @@ export const MapController = {
       });
 
       zonePolygons.push(circle);
+      zoneLayers[zoneId] = circle;
+    });
+  },
+
+  resetZoneStyles() {
+    Object.entries(zoneLayers).forEach(([zoneId, circle]) => {
+      const z = ZONE_CENTERS[zoneId];
+      if (z) {
+        circle.setStyle({
+          color: z.color,
+          fillColor: z.color,
+          fillOpacity: 0.05,
+          weight: 1.5,
+          dashArray: "4, 6",
+        });
+      }
     });
   },
 
@@ -177,9 +211,21 @@ export const MapController = {
         const atmConv = window.lastConvergencesData.convergences.find(c => c.convergence_type === "ATM_CONVERGENCE" && c.target_id === atm.atm_id);
         const zoneConv = window.lastConvergencesData.convergences.find(c => c.convergence_type === "ZONE_CONVERGENCE" && c.zone_id === atm.zone_id);
         if (atmConv) {
-          advisoryEl.innerHTML += `<div class="conv-advisory-banner">&#9888; <b>Repeated Target Convergence:</b> ${atmConv.total_matches} incidents (${atmConv.prediction_count} alerts) converged on this ATM in past ${atmConv.time_span_hours}h (Score: ${atmConv.convergence_score}/100, ${atmConv.severity_level}).</div>`;
+          const sevClass = `conv-advisory-${(atmConv.severity_level || "moderate").toLowerCase()}`;
+          advisoryEl.innerHTML += `
+            <div class="conv-advisory-banner ${sevClass}">
+              &#9888; <b>Repeated Target Convergence (${atmConv.severity_level}):</b> ${atmConv.total_matches} incidents (${atmConv.prediction_count} alerts) converged on this ATM in past ${atmConv.time_span_hours}h (Score: ${atmConv.convergence_score}/100).
+              <div style="margin-top: 3px;"><b>Recommended:</b> ${escapeHtml(atmConv.recommended_action)}</div>
+            </div>
+          `;
         } else if (zoneConv) {
-          advisoryEl.innerHTML += `<div class="conv-advisory-banner">&#9888; <b>Regional Corridor Convergence:</b> Active zone convergence in ${atm.zone_id ? atm.zone_id.replace("ZONE_", "Zone ") : "this zone"} across ${zoneConv.involved_atm_ids.length} ATMs (${zoneConv.total_matches} incidents).</div>`;
+          const sevClass = `conv-advisory-${(zoneConv.severity_level || "moderate").toLowerCase()}`;
+          advisoryEl.innerHTML += `
+            <div class="conv-advisory-banner ${sevClass}">
+              &#9888; <b>Regional Corridor Convergence (${zoneConv.severity_level}):</b> Active corridor pressure in ${atm.zone_id ? atm.zone_id.replace("ZONE_", "Zone ") : "this zone"} across ${zoneConv.involved_atm_ids.length} ATMs (${zoneConv.total_matches} incidents).
+              <div style="margin-top: 3px;"><b>Recommended:</b> ${escapeHtml(zoneConv.recommended_action)}</div>
+            </div>
+          `;
         }
       }
     }
@@ -315,5 +361,259 @@ export const MapController = {
       this.selectATM(item.data, true);
       mapInstance.flyTo([item.data.latitude, item.data.longitude], 15, { duration: 0.8 });
     }
+  },
+
+  renderConvergences(convergencesData) {
+    if (!mapInstance) return;
+    if (!convergenceLayer) {
+      convergenceLayer = L.layerGroup().addTo(mapInstance);
+    }
+
+    currentConvergencesData = convergencesData;
+    convergenceLayer.clearLayers();
+    convergenceMarkers = {};
+    this.resetZoneStyles();
+
+    if (!convergencesData || !Array.isArray(convergencesData.convergences)) {
+      return;
+    }
+
+    const SEVERITY_COLORS = {
+      CRITICAL: "#dc2626",
+      HIGH: "#ea580c",
+      ELEVATED: "#d97706",
+      MODERATE: "#0284c7",
+    };
+
+    convergencesData.convergences.forEach(c => {
+      const isAtm = c.convergence_type === "ATM_CONVERGENCE";
+      const sev = (c.severity_level || "MODERATE").toUpperCase();
+      const sevColor = SEVERITY_COLORS[sev] || "#0d9488";
+      const sevClass = `priority-${sev.toLowerCase()}`;
+
+      if (isAtm) {
+        // 1. Concentric tactical 250m perimeter ring
+        const outerRing = L.circle([c.latitude, c.longitude], {
+          radius: 250,
+          color: sevColor,
+          fillColor: sevColor,
+          fillOpacity: 0.12,
+          weight: 2,
+          dashArray: "3, 5",
+        });
+        convergenceLayer.addLayer(outerRing);
+
+        // 2. High-visibility multi-ring beacon marker
+        const beaconMarker = L.circleMarker([c.latitude, c.longitude], {
+          radius: 10.5,
+          color: "#ffffff",
+          weight: 2.5,
+          fillColor: sevColor,
+          fillOpacity: 0.95,
+          className: "conv-beacon-marker",
+        });
+
+        beaconMarker.bindTooltip(
+          `<b>${sev} ATM CONVERGENCE:</b> ${c.target_id} (${c.convergence_score}/100)`,
+          { direction: "top", offset: [0, -10] }
+        );
+
+        const popupContent = `
+          <div class="conv-popup-card">
+            <div class="conv-popup-header">
+              <span class="conv-popup-title">${escapeHtml(c.target_id)}</span>
+              <span class="priority-tag ${sevClass}">${sev}</span>
+            </div>
+            <div class="conv-popup-meta">
+              <span><b>Type:</b> Same-ATM Convergence</span>
+              <span><b>Score:</b> <span class="cluster-score-pill">${c.convergence_score}/100</span></span>
+            </div>
+            <div class="conv-popup-meta">
+              <span><b>Matches:</b> ${c.total_matches} (${c.prediction_count} alerts, ${c.case_count} cases)</span>
+              <span><b>Span:</b> ${c.time_span_hours}h</span>
+            </div>
+            <div class="conv-popup-reason">
+              ${escapeHtml(c.reason)}
+            </div>
+            <div class="conv-popup-action">
+              <b>Recommended Action:</b> ${escapeHtml(c.recommended_action)}
+            </div>
+          </div>
+        `;
+        beaconMarker.bindPopup(popupContent);
+
+        beaconMarker.on("click", () => {
+          this.selectConvergence(c, false);
+        });
+
+        convergenceLayer.addLayer(beaconMarker);
+        convergenceMarkers[c.convergence_id] = { marker: beaconMarker, ring: outerRing, data: c };
+
+      } else {
+        // Zone Corridor Convergence
+        // 1. Highlight administrative zone circle
+        const zoneCircle = zoneLayers[c.zone_id];
+        if (zoneCircle) {
+          zoneCircle.setStyle({
+            color: sevColor,
+            fillColor: sevColor,
+            fillOpacity: 0.20,
+            weight: 3,
+            dashArray: "6, 6",
+          });
+        }
+
+        // 2. Central corridor beacon marker at zone centroid
+        const corridorMarker = L.circleMarker([c.latitude, c.longitude], {
+          radius: 13,
+          color: "#ffffff",
+          weight: 2.5,
+          fillColor: sevColor,
+          fillOpacity: 0.88,
+          dashArray: "2, 3",
+          className: "conv-beacon-marker",
+        });
+
+        corridorMarker.bindTooltip(
+          `<b>${sev} CORRIDOR CONVERGENCE:</b> ${escapeHtml(c.target_name)} (${c.convergence_score}/100)`,
+          { direction: "top", offset: [0, -12] }
+        );
+
+        const atmsPreview = c.involved_atm_ids && c.involved_atm_ids.length > 0
+          ? c.involved_atm_ids.join(", ")
+          : "Active Zone Network";
+
+        const popupContent = `
+          <div class="conv-popup-card">
+            <div class="conv-popup-header">
+              <span class="conv-popup-title">${escapeHtml(c.target_name)}</span>
+              <span class="priority-tag ${sevClass}">${sev}</span>
+            </div>
+            <div class="conv-popup-meta">
+              <span><b>Type:</b> Regional Corridor</span>
+              <span><b>Score:</b> <span class="cluster-score-pill">${c.convergence_score}/100</span></span>
+            </div>
+            <div class="conv-popup-meta">
+              <span><b>Matches:</b> ${c.total_matches} (${c.prediction_count} alerts, ${c.case_count} cases)</span>
+              <span><b>Span:</b> ${c.time_span_hours}h</span>
+            </div>
+            <div style="font-size: 11px; color: #475569; margin-bottom: 5px;">
+              <b>Involved ATMs (${c.involved_atm_ids ? c.involved_atm_ids.length : 0}):</b>
+              <code style="display: block; word-break: break-all; margin-top: 2px;">${escapeHtml(atmsPreview)}</code>
+            </div>
+            <div class="conv-popup-reason">
+              ${escapeHtml(c.reason)}
+            </div>
+            <div class="conv-popup-action">
+              <b>Tactical Corridor Action:</b> ${escapeHtml(c.recommended_action)}
+            </div>
+          </div>
+        `;
+        corridorMarker.bindPopup(popupContent);
+
+        corridorMarker.on("click", () => {
+          this.selectConvergence(c, false);
+        });
+
+        convergenceLayer.addLayer(corridorMarker);
+        convergenceMarkers[c.convergence_id] = { marker: corridorMarker, zoneCircle, data: c };
+      }
+    });
+  },
+
+  selectConvergence(conv, shouldCenter = true) {
+    if (!conv) return;
+
+    const idEl = document.getElementById("selAtmId");
+    const statusEl = document.getElementById("selAtmStatus");
+    const bankEl = document.getElementById("selAtmBank");
+    const zoneEl = document.getElementById("selAtmZone");
+    const typeEl = document.getElementById("selAtmType");
+    const capEl = document.getElementById("selAtmCapacity");
+    const cashoutsEl = document.getElementById("selAtmCashouts");
+    const coordsEl = document.getElementById("selAtmCoords");
+    const advisoryEl = document.getElementById("selectedLocationAdvisory");
+    const detailsRow = document.getElementById("selectedLocationDetails");
+    const centerBtn = document.getElementById("btnCenterSelectedAtm");
+
+    const isAtm = conv.convergence_type === "ATM_CONVERGENCE";
+    const sev = (conv.severity_level || "MODERATE").toUpperCase();
+
+    if (idEl) idEl.innerText = conv.target_id;
+    if (statusEl) {
+      statusEl.className = `priority-tag priority-${sev.toLowerCase()}`;
+      statusEl.innerText = `${sev} ${isAtm ? "ATM CONVERGENCE" : "ZONE CORRIDOR"}`;
+    }
+    if (bankEl) {
+      bankEl.innerText = isAtm ? "REPEATED TARGET" : "REGIONAL CORRIDOR";
+    }
+    if (zoneEl) {
+      const zoneName = conv.zone_id ? conv.zone_id.replace("ZONE_", "Zone ") : "Jurisdiction";
+      zoneEl.innerText = `${zoneName} · Convergence Score: ${conv.convergence_score}/100 · ${conv.total_matches} Matches`;
+    }
+
+    if (typeEl) typeEl.innerText = isAtm ? "Same-ATM Convergence" : "Multi-ATM Zone Corridor";
+    if (capEl) capEl.innerText = `${conv.prediction_count} Alerts / ${conv.case_count} Cases`;
+    if (cashoutsEl) cashoutsEl.innerText = `${conv.time_span_hours}h Activity Span`;
+    if (coordsEl) coordsEl.innerText = `${Number(conv.latitude).toFixed(4)}° N, ${Number(conv.longitude).toFixed(4)}° E`;
+
+    if (detailsRow) detailsRow.style.display = "grid";
+
+    if (advisoryEl) {
+      advisoryEl.style.display = "block";
+      const sevClass = `conv-advisory-${sev.toLowerCase()}`;
+      advisoryEl.className = `location-advisory-box ${sevClass}`;
+      advisoryEl.innerHTML = `
+        <div style="font-weight: 700; margin-bottom: 3px;">
+          &#9888; ${sev} SPATIAL CONVERGENCE (Score: ${conv.convergence_score}/100):
+        </div>
+        <div style="margin-bottom: 5px; color: var(--text-main);">
+          ${escapeHtml(conv.reason)}
+        </div>
+        <div style="font-size: 0.72rem; color: var(--accent-teal-dark); font-weight: 600;">
+          <b>Recommended Action:</b> ${escapeHtml(conv.recommended_action)}
+        </div>
+      `;
+    }
+
+    if (centerBtn) {
+      centerBtn.style.display = "inline-block";
+      centerBtn.innerText = "Focus on Map";
+      centerBtn.onclick = () => {
+        this.focusLocation(conv.latitude, conv.longitude, 15);
+        if (convergenceMarkers[conv.convergence_id] && convergenceMarkers[conv.convergence_id].marker) {
+          convergenceMarkers[conv.convergence_id].marker.openPopup();
+        }
+      };
+    }
+
+    if (shouldCenter) {
+      this.focusLocation(conv.latitude, conv.longitude, 15);
+      if (convergenceMarkers[conv.convergence_id] && convergenceMarkers[conv.convergence_id].marker) {
+        convergenceMarkers[conv.convergence_id].marker.openPopup();
+      }
+    }
+  },
+
+  focusConvergenceById(convergenceId) {
+    const item = convergenceMarkers[convergenceId];
+    if (item && item.data) {
+      const c = item.data;
+      this.focusLocation(c.latitude, c.longitude, 15);
+      if (item.marker) {
+        item.marker.openPopup();
+      }
+      this.selectConvergence(c, false);
+      return true;
+    }
+    // Fallback if not rendered in layer but exists in current dataset
+    if (currentConvergencesData && Array.isArray(currentConvergencesData.convergences)) {
+      const c = currentConvergencesData.convergences.find(x => x.convergence_id === convergenceId);
+      if (c) {
+        this.selectConvergence(c, true);
+        return true;
+      }
+    }
+    return false;
   },
 };

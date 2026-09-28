@@ -775,6 +775,9 @@ async function loadConvergences() {
     });
     renderConvergences(data);
     window.lastConvergencesData = data;
+    if (MapController && typeof MapController.renderConvergences === "function") {
+      MapController.renderConvergences(data);
+    }
   } catch (err) {
     if (summaryEl) summaryEl.innerText = `Convergence detection error: ${err.message}`;
   }
@@ -830,8 +833,8 @@ function renderConvergences(data) {
         </td>
         <td>
           ${c.latitude && c.longitude ? `
-            <button type="button" class="btn-conv-focus" onclick="window.focusMapCoordinates(${c.latitude}, ${c.longitude}, '${escapeHtml(c.target_id)}')">
-              Map Pin
+            <button type="button" class="btn-conv-focus" onclick="window.viewConvergenceOnMap('${escapeHtml(c.convergence_id)}')">
+              View on Map
             </button>
           ` : "--"}
         </td>
@@ -840,6 +843,21 @@ function renderConvergences(data) {
     })
     .join("");
 }
+
+window.viewConvergenceOnMap = (convergenceId) => {
+  if (MapController && typeof MapController.focusConvergenceById === "function") {
+    const focused = MapController.focusConvergenceById(convergenceId);
+    if (focused) {
+      const mapPanel = document.querySelector(".map-panel");
+      if (mapPanel) {
+        mapPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      showToast(`Focused map on convergence ${convergenceId}`, "info");
+      return;
+    }
+  }
+  showToast(`Convergence ${convergenceId} not found on map`, "error");
+};
 
 window.focusMapCoordinates = (lat, lon, targetId) => {
   if (MapController && typeof MapController.focusLocation === "function") {
