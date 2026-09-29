@@ -17,11 +17,12 @@ import uuid
 from fastapi import HTTPException, status
 
 
-VALID_CASE_STATUSES = {"NEW_ALERT", "PATROL_DISPATCHED", "RESOLVED"}
+VALID_CASE_STATUSES = {"NEW_ALERT", "PATROL_DISPATCHED", "OUTCOME_PENDING", "RESOLVED"}
 
 VALID_STATUS_TRANSITIONS = {
     "NEW_ALERT": {"PATROL_DISPATCHED"},
-    "PATROL_DISPATCHED": {"RESOLVED"},
+    "PATROL_DISPATCHED": {"OUTCOME_PENDING", "RESOLVED"},
+    "OUTCOME_PENDING": {"RESOLVED"},
     "RESOLVED": set(),
 }
 
@@ -197,6 +198,14 @@ def transition_case_status(
                 f"Allowed transitions from '{current_status}': {list(allowed) if allowed else 'None (Terminal state)'}."
             ),
         )
+
+    if target_status == "RESOLVED":
+        cur.execute("SELECT outcome_id FROM case_outcomes WHERE case_id = ?;", (case_id,))
+        if not cur.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot resolve case '{case_id}' before an operational outcome is recorded.",
+            )
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     existing_notes = case.get("notes") or ""

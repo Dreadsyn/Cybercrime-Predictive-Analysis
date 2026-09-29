@@ -519,6 +519,11 @@ function renderPredictionResult(result) {
   const btnExportCsv = document.getElementById("btnExportCsv");
 
   function updateCaseControls(caseId, status, dispatchInfo = null, outcomeInfo = null) {
+    if (dispatchInfo) result._dispatch = dispatchInfo;
+    if (outcomeInfo) result._outcome = outcomeInfo;
+    const currentDisp = dispatchInfo || result._dispatch || null;
+    const currentOut = outcomeInfo || result._outcome || null;
+
     if (caseIdBadge) {
       if (caseId) {
         caseIdBadge.innerText = caseId;
@@ -529,9 +534,13 @@ function renderPredictionResult(result) {
     }
     if (caseStatusBadge) {
       if (status) {
-        caseStatusBadge.innerText = status;
+        let statusLabel = status.replace(/_/g, " ");
+        if (status === "RESOLVED") {
+          statusLabel = "CLOSED";
+        }
+        caseStatusBadge.innerText = `CASE STATUS: ${statusLabel}`;
         caseStatusBadge.className = `case-status-badge status-${status.toLowerCase()}`;
-        caseStatusBadge.style.display = "inline-block";
+        caseStatusBadge.style.display = "inline-flex";
       } else {
         caseStatusBadge.style.display = "none";
       }
@@ -540,44 +549,45 @@ function renderPredictionResult(result) {
     if (dispatchBadge) {
       if (!caseId) {
         dispatchBadge.style.display = "none";
-      } else if (status === "PATROL_DISPATCHED") {
-        const unitName = dispatchInfo?.patrol_unit_assigned || "PATROL";
+      } else if (status === "PATROL_DISPATCHED" || status === "OUTCOME_PENDING") {
+        const unitName = currentDisp?.patrol_unit_assigned || "PCR";
         dispatchBadge.innerText = `${unitName}: DISPATCHED`;
         dispatchBadge.className = "dispatch-badge status-dispatched";
         dispatchBadge.style.display = "inline-flex";
       } else if (status === "RESOLVED") {
-        dispatchBadge.innerText = "RESOLVED";
+        const unitName = currentDisp?.patrol_unit_assigned || "PCR";
+        dispatchBadge.innerText = `${unitName}: COMPLETED`;
         dispatchBadge.className = "dispatch-badge status-dispatched";
         dispatchBadge.style.display = "inline-flex";
       } else {
-        dispatchBadge.innerText = "READY";
+        dispatchBadge.innerText = "DISPATCH: READY";
         dispatchBadge.className = "dispatch-badge";
         dispatchBadge.style.display = "inline-flex";
       }
     }
 
     if (outcomeBadge) {
-      if (!caseId || !outcomeInfo) {
+      if (!caseId || !currentOut) {
         outcomeBadge.style.display = "none";
       } else {
-        const st = outcomeInfo.outcome_status;
+        const st = currentOut.outcome_status;
         let badgeClass = "outcome-badge";
-        let label = st.replace("INTERCEPTED_AT_", "").replace(/_/g, " ");
-        if (outcomeInfo.is_spatial_hit) {
+        let label = "OUTCOME: ";
+        if (currentOut.is_spatial_hit || st === "INTERCEPTED_AT_PREDICTED_ATM") {
           badgeClass += " outcome-hit";
-          label = "HIT: PREDICTED ATM";
+          label += "INTERCEPTED AT PREDICTED ATM";
         } else if (st === "INTERCEPTED_AT_OTHER_ATM") {
           badgeClass += " outcome-other";
-          label = "HIT: OTHER ATM";
+          label += "INTERCEPTED AT OTHER ATM";
         } else if (st === "FALSE_ALERT") {
           badgeClass += " outcome-false";
-          label = "FALSE ALERT";
+          label += "FALSE ALERT";
         } else if (st === "NO_CASHOUT") {
           badgeClass += " outcome-false";
-          label = "NO CASHOUT";
+          label += "NO CASHOUT";
         } else {
           badgeClass += " outcome-unresolved";
-          label = "UNRESOLVED";
+          label += "UNRESOLVED — SUSPECT EVADED";
         }
         outcomeBadge.className = badgeClass;
         outcomeBadge.innerText = label;
@@ -585,41 +595,96 @@ function renderPredictionResult(result) {
       }
     }
 
-    if (btnViewDispatch) {
-      btnViewDispatch.style.display = caseId ? "inline-flex" : "none";
-    }
-
-    if (btnRecordOutcome) {
-      btnRecordOutcome.style.display = caseId ? "inline-flex" : "none";
+    // Sequential Operational State Machine Controls
+    if (!caseId) {
+      if (btnTransition) btnTransition.style.display = "none";
+      if (btnRecordOutcome) btnRecordOutcome.style.display = "none";
+      if (btnViewDispatch) btnViewDispatch.style.display = "none";
+      if (btnExportEvidence) btnExportEvidence.style.display = "none";
+      return;
     }
 
     if (btnExportEvidence) {
-      btnExportEvidence.style.display = caseId ? "inline-flex" : "none";
+      btnExportEvidence.style.display = "inline-flex";
     }
 
-    if (btnTransition && transitionText) {
-      if (!caseId || status === "RESOLVED") {
-        if (status === "RESOLVED") {
-          btnTransition.style.display = "inline-flex";
-          btnTransition.disabled = true;
-          btnTransition.style.opacity = "0.6";
-          btnTransition.style.cursor = "default";
-          transitionText.innerText = "✓ Resolved";
-        } else {
-          btnTransition.style.display = "none";
+    // Final Resolution Report Card in Hero
+    const heroReportCard = document.getElementById("heroFinalOutcomeRecord");
+    if (heroReportCard) {
+      if (status === "RESOLVED") {
+        heroReportCard.style.display = "block";
+        const repBadge = document.getElementById("reportOutcomeBadge");
+        if (repBadge && outcomeBadge) {
+          repBadge.className = outcomeBadge.className;
+          repBadge.innerText = outcomeBadge.innerText;
         }
-      } else if (status === "NEW_ALERT") {
+        const repCaseStatus = document.getElementById("reportCaseStatus");
+        if (repCaseStatus) repCaseStatus.innerText = "RESOLVED / CLOSED";
+        const repSpatialHit = document.getElementById("reportSpatialHit");
+        if (repSpatialHit) {
+          repSpatialHit.innerText = (currentOut?.is_spatial_hit || currentOut?.outcome_status === "INTERCEPTED_AT_PREDICTED_ATM") 
+            ? "Confirmed Spatial Hit" 
+            : "Adjacent / Non-Target Resolution";
+        }
+        const repPredAtm = document.getElementById("reportPredictedAtm");
+        if (repPredAtm) repPredAtm.innerText = result.predicted_atm_id || "--";
+        const repActualAtm = document.getElementById("reportActualAtm");
+        if (repActualAtm) repActualAtm.innerText = currentOut?.actual_atm_id || result.predicted_atm_id || "--";
+        const repUnit = document.getElementById("reportUnit");
+        if (repUnit) repUnit.innerText = currentDisp?.patrol_unit_assigned || "PCR Unit";
+        const repTime = document.getElementById("reportTimestamp");
+        if (repTime) repTime.innerText = currentOut?.outcome_timestamp || new Date().toISOString().replace("T", " ").substring(0, 19);
+        const repNotes = document.getElementById("reportNotes");
+        if (repNotes) repNotes.innerText = currentOut?.notes || "No debrief remarks recorded.";
+      } else {
+        heroReportCard.style.display = "none";
+      }
+    }
+
+    if (status === "NEW_ALERT") {
+      // 1. NEW_ALERT: Primary control is "Dispatch Patrol"
+      if (btnTransition) {
         btnTransition.style.display = "inline-flex";
         btnTransition.disabled = false;
         btnTransition.style.opacity = "1";
         btnTransition.style.cursor = "pointer";
-        transitionText.innerText = "Dispatch Patrol";
-      } else if (status === "PATROL_DISPATCHED") {
-        btnTransition.style.display = "inline-flex";
-        btnTransition.disabled = false;
-        btnTransition.style.opacity = "1";
-        btnTransition.style.cursor = "pointer";
-        transitionText.innerText = "Resolve Case";
+        btnTransition.className = "btn-op-primary";
+        btnTransition.innerHTML = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg><span id="caseTransitionText">Dispatch Patrol</span>`;
+      }
+      if (btnRecordOutcome) btnRecordOutcome.style.display = "none";
+      if (btnViewDispatch) btnViewDispatch.style.display = "none";
+    } else if (status === "PATROL_DISPATCHED" || status === "OUTCOME_PENDING") {
+      // 2. PATROL_DISPATCHED / OUTCOME_PENDING: Primary action is "Log Outcome"
+      if (btnTransition) {
+        btnTransition.style.display = "none";
+      }
+      if (btnRecordOutcome) {
+        btnRecordOutcome.style.display = "inline-flex";
+        btnRecordOutcome.disabled = false;
+        btnRecordOutcome.className = "btn-op-primary";
+        btnRecordOutcome.innerHTML = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="m9 14 2 2 4-4"/></svg><span id="recordOutcomeText">Log Outcome</span>`;
+        btnRecordOutcome.title = "Record Actual Incident Outcome";
+      }
+      if (btnViewDispatch) {
+        btnViewDispatch.style.display = "inline-flex";
+        btnViewDispatch.className = "btn-op-secondary";
+        btnViewDispatch.title = "View Field Dispatch Details";
+      }
+    } else if (status === "RESOLVED") {
+      // 3. RESOLVED / CLOSED: Terminal state, no mutations allowed
+      if (btnTransition) {
+        btnTransition.style.display = "none";
+      }
+      if (btnRecordOutcome) {
+        btnRecordOutcome.style.display = "inline-flex";
+        btnRecordOutcome.className = "btn-op-secondary";
+        btnRecordOutcome.innerHTML = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>View Final Outcome</span>`;
+        btnRecordOutcome.title = "View Final Recorded Outcome (Read-Only)";
+      }
+      if (btnViewDispatch) {
+        btnViewDispatch.style.display = "inline-flex";
+        btnViewDispatch.className = "btn-op-secondary";
+        btnViewDispatch.title = "View Field Dispatch Details (Read-Only)";
       }
     }
   }
@@ -627,10 +692,10 @@ function renderPredictionResult(result) {
   updateCaseControls(result.case_id, result.case_status);
 
   // Load existing dispatch if case already has one
-  if (result.case_id && (result.case_status === "PATROL_DISPATCHED" || result.case_status === "RESOLVED")) {
+  if (result.case_id && (result.case_status === "PATROL_DISPATCHED" || result.case_status === "OUTCOME_PENDING" || result.case_status === "RESOLVED")) {
     API.getCaseDispatch(result.case_id)
       .then(disp => {
-        if (disp) updateCaseControls(result.case_id, result.case_status, disp);
+        if (disp) updateCaseControls(result.case_id, result.case_status, disp, null);
       })
       .catch(() => {});
   }
@@ -644,17 +709,10 @@ function renderPredictionResult(result) {
       .catch(() => {});
   }
 
-  // Action: Transition Case or Launch Dispatch
+  // Action: Launch Dispatch (NEW_ALERT state only)
   if (btnTransition) {
     btnTransition.onclick = async () => {
-      const currentStatus = result.case_status || "NEW_ALERT";
-      if (currentStatus === "NEW_ALERT") {
-        // Open Dispatch Modal to inspect tactical route & confirm dispatch
-        openDispatchModal(result);
-      } else if (currentStatus === "PATROL_DISPATCHED") {
-        // Open Outcome Modal so investigator can log ground truth and resolve case
-        openOutcomeModal(result);
-      }
+      openDispatchModal(result);
     };
   }
 
@@ -804,15 +862,15 @@ function renderPredictionResult(result) {
         const textToCopy = result.playbook.dispatch_brief || result.playbook.summary || "";
         try {
           await navigator.clipboard.writeText(textToCopy);
-          const icon = document.getElementById("copyBriefIcon");
+          const iconSvg = document.getElementById("copyBriefIconSvg");
           const text = document.getElementById("copyBriefText");
-          if (icon) icon.innerText = "✓";
-          if (text) text.innerText = "Copied to Clipboard!";
+          if (iconSvg) iconSvg.innerHTML = `<polyline points="20 6 9 17 4 12"/>`;
+          if (text) text.innerText = "Copied!";
           copyBtn.classList.add("copied");
           showToast("Tactical Dispatch Brief copied to clipboard!", "success");
           setTimeout(() => {
-            if (icon) icon.innerHTML = "&#128203;";
-            if (text) text.innerText = "Copy Dispatch Brief";
+            if (iconSvg) iconSvg.innerHTML = `<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>`;
+            if (text) text.innerText = "Copy Brief";
             copyBtn.classList.remove("copied");
           }, 2500);
         } catch (e) {
@@ -1248,7 +1306,18 @@ async function openDispatchModal(result) {
       if (existing.tactical_brief) briefEl.innerText = existing.tactical_brief;
       caseStatusEl.innerText = result.case_status || "PATROL_DISPATCHED";
       caseStatusEl.className = `case-status-badge status-${(result.case_status || "patrol_dispatched").toLowerCase()}`;
-      confirmBtn.innerText = existing.dispatch_status === "DISPATCHED" ? "Update Dispatch" : "Dispatch Unit";
+
+      // View-only if already dispatched
+      if (existing.dispatch_status === "DISPATCHED" || result.case_status !== "NEW_ALERT") {
+        unitInput.disabled = true;
+        notesInput.disabled = true;
+        confirmBtn.style.display = "none";
+      } else {
+        unitInput.disabled = false;
+        notesInput.disabled = false;
+        confirmBtn.style.display = "inline-flex";
+        confirmBtn.innerText = "Dispatch Unit";
+      }
     }
   } catch (err) {
     dispatchIdEl.innerText = "NOT_DISPATCHED";
@@ -1256,6 +1325,9 @@ async function openDispatchModal(result) {
     dispStatusEl.className = "dispatch-badge";
     caseStatusEl.innerText = result.case_status || "NEW_ALERT";
     caseStatusEl.className = `case-status-badge status-${(result.case_status || "new_alert").toLowerCase()}`;
+    unitInput.disabled = false;
+    notesInput.disabled = false;
+    confirmBtn.style.display = "inline-flex";
     confirmBtn.innerText = "Confirm & Dispatch";
   }
 
@@ -1306,13 +1378,14 @@ function setupDispatchModalListeners() {
           auto_advance_case: true,
         });
         res.case_status = "PATROL_DISPATCHED";
+        res._dispatch = disp;
         closeModal();
         showToast(`Field patrol unit ${disp.patrol_unit_assigned} dispatched (ID: ${disp.dispatch_id})`, "success");
 
-        // Update hero badges
+        // Immediately update sequential operational state
         const caseStatusBadge = document.getElementById("predCaseStatusBadge");
         if (caseStatusBadge) {
-          caseStatusBadge.innerText = "PATROL_DISPATCHED";
+          caseStatusBadge.innerText = "CASE STATUS: PATROL DISPATCHED";
           caseStatusBadge.className = "case-status-badge status-patrol_dispatched";
         }
         const dispatchBadge = document.getElementById("predDispatchBadge");
@@ -1321,12 +1394,19 @@ function setupDispatchModalListeners() {
           dispatchBadge.className = "dispatch-badge status-dispatched";
         }
         const btnTransition = document.getElementById("btnCaseTransition");
-        const transitionText = document.getElementById("caseTransitionText");
-        if (btnTransition && transitionText) {
-          btnTransition.disabled = false;
-          btnTransition.style.opacity = "1";
-          btnTransition.style.cursor = "pointer";
-          transitionText.innerText = "Resolve Case";
+        if (btnTransition) btnTransition.style.display = "none";
+
+        const btnRecordOutcome = document.getElementById("btnRecordOutcome");
+        if (btnRecordOutcome) {
+          btnRecordOutcome.style.display = "inline-flex";
+          btnRecordOutcome.className = "btn-op-primary";
+          btnRecordOutcome.innerHTML = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="m9 14 2 2 4-4"/></svg><span id="recordOutcomeText">Log Outcome</span>`;
+          btnRecordOutcome.title = "Record Actual Incident Outcome";
+        }
+        const btnViewDispatch = document.getElementById("btnViewDispatch");
+        if (btnViewDispatch) {
+          btnViewDispatch.style.display = "inline-flex";
+          btnViewDispatch.className = "btn-op-secondary";
         }
 
         await loadAlertHistory();
@@ -1424,19 +1504,83 @@ async function openOutcomeModal(result) {
     console.warn("Could not load outcome metrics:", err);
   }
 
-  // Check if outcome already recorded
+  // Check if outcome already recorded / case resolved (view-only mode)
+  let isFinalized = result.case_status === "RESOLVED";
+  let existing = null;
   try {
-    const existing = await API.getCaseOutcome(result.case_id);
+    existing = await API.getCaseOutcome(result.case_id);
     if (existing) {
       statusSelect.value = existing.outcome_status;
       if (existing.actual_atm_id) actualAtmInput.value = existing.actual_atm_id;
       if (existing.notes) notesInput.value = existing.notes;
-      confirmBtn.innerText = "Update Outcome";
+      isFinalized = true;
       updateFeedbackBanner();
-    } else {
-      confirmBtn.innerText = "Record Outcome & Resolve";
     }
-  } catch {
+  } catch {}
+
+  const formMode = document.getElementById("outcomeModalFormMode");
+  const reportMode = document.getElementById("outcomeModalReportMode");
+  const modalTitle = document.getElementById("outcomeModalTitle");
+
+  if (isFinalized) {
+    if (modalTitle) modalTitle.innerText = "Incident Resolution Record";
+    if (formMode) formMode.style.display = "none";
+    if (reportMode) {
+      reportMode.style.display = "block";
+      const repBadge = document.getElementById("modalReportOutcomeBadge");
+      const currentOut = existing || result._outcome;
+      if (repBadge && currentOut) {
+        const st = currentOut.outcome_status;
+        let bCls = "outcome-badge";
+        let bTxt = "OUTCOME: ";
+        if (currentOut.is_spatial_hit || st === "INTERCEPTED_AT_PREDICTED_ATM") {
+          bCls += " outcome-hit";
+          bTxt += "INTERCEPTED AT PREDICTED ATM";
+        } else if (st === "INTERCEPTED_AT_OTHER_ATM") {
+          bCls += " outcome-other";
+          bTxt += "INTERCEPTED AT OTHER ATM";
+        } else if (st === "FALSE_ALERT") {
+          bCls += " outcome-false";
+          bTxt += "FALSE ALERT";
+        } else if (st === "NO_CASHOUT") {
+          bCls += " outcome-false";
+          bTxt += "NO CASHOUT";
+        } else {
+          bCls += " outcome-unresolved";
+          bTxt += "UNRESOLVED";
+        }
+        repBadge.className = bCls;
+        repBadge.innerText = bTxt;
+      }
+      const repCaseStatus = document.getElementById("modalReportCaseStatus");
+      if (repCaseStatus) repCaseStatus.innerText = "RESOLVED / CLOSED";
+      const repHit = document.getElementById("modalReportSpatialHit");
+      if (repHit) {
+        repHit.innerText = (currentOut?.is_spatial_hit || currentOut?.outcome_status === "INTERCEPTED_AT_PREDICTED_ATM")
+          ? "Confirmed Spatial Hit"
+          : "Adjacent / Non-Target Resolution";
+      }
+      const repPred = document.getElementById("modalReportPredictedAtm");
+      if (repPred) repPred.innerText = result.predicted_atm_id || "--";
+      const repAct = document.getElementById("modalReportActualAtm");
+      if (repAct) repAct.innerText = currentOut?.actual_atm_id || result.predicted_atm_id || "--";
+      const repUnit = document.getElementById("modalReportUnit");
+      if (repUnit) repUnit.innerText = result._dispatch?.patrol_unit_assigned || currentOut?.dispatch_id || "Patrol Unit";
+      const repTime = document.getElementById("modalReportTimestamp");
+      if (repTime) repTime.innerText = currentOut?.outcome_timestamp || "Resolved";
+      const repNotes = document.getElementById("modalReportNotes");
+      if (repNotes) repNotes.innerText = currentOut?.notes || "No remarks recorded.";
+    }
+    confirmBtn.style.display = "none";
+  } else {
+    if (modalTitle) modalTitle.innerText = "Record Incident Outcome & Interception Feedback";
+    if (formMode) formMode.style.display = "block";
+    if (reportMode) reportMode.style.display = "none";
+    statusSelect.disabled = false;
+    actualAtmInput.disabled = false;
+    notesInput.disabled = false;
+    confirmBtn.style.display = "inline-flex";
+    confirmBtn.disabled = false;
     confirmBtn.innerText = "Record Outcome & Resolve";
   }
 
@@ -1491,42 +1635,84 @@ function setupOutcomeModalListeners() {
           auto_resolve_case: true,
         });
         res.case_status = "RESOLVED";
+        res._outcome = out;
         closeModal();
-        showToast(`Incident outcome recorded: ${out.outcome_status}`, "success");
+        showToast(`Incident outcome recorded: ${out.outcome_status}. Case closed.`, "success");
 
-        // Update hero badges
+        // Immediately update sequential operational state
         const caseStatusBadge = document.getElementById("predCaseStatusBadge");
         if (caseStatusBadge) {
-          caseStatusBadge.innerText = "RESOLVED";
+          caseStatusBadge.innerText = "CASE STATUS: CLOSED";
           caseStatusBadge.className = "case-status-badge status-resolved";
         }
         const outcomeBadge = document.getElementById("predOutcomeBadge");
         if (outcomeBadge) {
           outcomeBadge.style.display = "inline-flex";
-          if (out.is_spatial_hit) {
-            outcomeBadge.className = "outcome-badge outcome-hit";
-            outcomeBadge.innerText = "HIT: PREDICTED ATM";
+          let badgeClass = "outcome-badge";
+          let label = "OUTCOME: ";
+          if (out.is_spatial_hit || out.outcome_status === "INTERCEPTED_AT_PREDICTED_ATM") {
+            badgeClass += " outcome-hit";
+            label += "INTERCEPTED AT PREDICTED ATM";
           } else if (out.outcome_status === "INTERCEPTED_AT_OTHER_ATM") {
-            outcomeBadge.className = "outcome-badge outcome-other";
-            outcomeBadge.innerText = "HIT: OTHER ATM";
+            badgeClass += " outcome-other";
+            label += "INTERCEPTED AT OTHER ATM";
           } else if (out.outcome_status === "FALSE_ALERT") {
-            outcomeBadge.className = "outcome-badge outcome-false";
-            outcomeBadge.innerText = "FALSE ALERT";
+            badgeClass += " outcome-false";
+            label += "FALSE ALERT";
           } else if (out.outcome_status === "NO_CASHOUT") {
-            outcomeBadge.className = "outcome-badge outcome-false";
-            outcomeBadge.innerText = "NO CASHOUT";
+            badgeClass += " outcome-false";
+            label += "NO CASHOUT";
           } else {
-            outcomeBadge.className = "outcome-badge outcome-unresolved";
-            outcomeBadge.innerText = "UNRESOLVED";
+            badgeClass += " outcome-unresolved";
+            label += "UNRESOLVED — SUSPECT EVADED";
           }
+          outcomeBadge.className = badgeClass;
+          outcomeBadge.innerText = label;
         }
+
         const btnTransition = document.getElementById("btnCaseTransition");
-        const transitionText = document.getElementById("caseTransitionText");
-        if (btnTransition && transitionText) {
-          btnTransition.disabled = true;
-          btnTransition.style.opacity = "0.6";
-          btnTransition.style.cursor = "default";
-          transitionText.innerText = "✓ Resolved";
+        if (btnTransition) btnTransition.style.display = "none";
+
+        const btnRecordOutcome = document.getElementById("btnRecordOutcome");
+        if (btnRecordOutcome) {
+          btnRecordOutcome.style.display = "inline-flex";
+          btnRecordOutcome.className = "btn-op-secondary";
+          btnRecordOutcome.innerHTML = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>View Final Outcome</span>`;
+          btnRecordOutcome.title = "View Final Recorded Outcome (Read-Only)";
+        }
+        const btnViewDispatch = document.getElementById("btnViewDispatch");
+        if (btnViewDispatch) {
+          btnViewDispatch.style.display = "inline-flex";
+          btnViewDispatch.className = "btn-op-secondary";
+          btnViewDispatch.title = "View Field Dispatch Details (Read-Only)";
+        }
+
+        const heroReportCard = document.getElementById("heroFinalOutcomeRecord");
+        if (heroReportCard) {
+          heroReportCard.style.display = "block";
+          const repBadge = document.getElementById("reportOutcomeBadge");
+          if (repBadge && outcomeBadge) {
+            repBadge.className = outcomeBadge.className;
+            repBadge.innerText = outcomeBadge.innerText;
+          }
+          const repCaseStatus = document.getElementById("reportCaseStatus");
+          if (repCaseStatus) repCaseStatus.innerText = "RESOLVED / CLOSED";
+          const repSpatialHit = document.getElementById("reportSpatialHit");
+          if (repSpatialHit) {
+            repSpatialHit.innerText = (out.is_spatial_hit || out.outcome_status === "INTERCEPTED_AT_PREDICTED_ATM") 
+              ? "Confirmed Spatial Hit" 
+              : "Adjacent / Non-Target Resolution";
+          }
+          const repPredAtm = document.getElementById("reportPredictedAtm");
+          if (repPredAtm) repPredAtm.innerText = res.predicted_atm_id || "--";
+          const repActualAtm = document.getElementById("reportActualAtm");
+          if (repActualAtm) repActualAtm.innerText = out.actual_atm_id || res.predicted_atm_id || "--";
+          const repUnit = document.getElementById("reportUnit");
+          if (repUnit) repUnit.innerText = res._dispatch?.patrol_unit_assigned || "PCR Unit";
+          const repTime = document.getElementById("reportTimestamp");
+          if (repTime) repTime.innerText = out.outcome_timestamp || new Date().toISOString().replace("T", " ").substring(0, 19);
+          const repNotes = document.getElementById("reportNotes");
+          if (repNotes) repNotes.innerText = out.notes || "No debrief remarks recorded.";
         }
 
         await loadAlertHistory();

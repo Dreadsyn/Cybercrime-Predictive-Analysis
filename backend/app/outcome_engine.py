@@ -110,81 +110,66 @@ def record_or_update_case_outcome(
     else:
         is_spatial_hit = 0
 
-    # 3. Pull linked dispatch ID if present
+    # 3. Guard: Cannot record outcome before patrol dispatch
     dispatch_rec = get_dispatch_by_case_id(db_conn, case_id)
-    dispatch_id = dispatch_rec["dispatch_id"] if dispatch_rec else None
+    if not dispatch_rec or dispatch_rec.get("dispatch_status") != "DISPATCHED" or case.get("case_status") == "NEW_ALERT":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot record outcome for case '{case_id}' before patrol is dispatched.",
+        )
+    dispatch_id = dispatch_rec["dispatch_id"]
 
-    # 4. Pull linked prediction ID
-    prediction_id = case.get("parent_alert_id") or ""
-
-    # 5. Check if outcome already exists for this case
+    # 4. Guard: Final outcome cannot be modified after recording
     existing = get_outcome_by_case_id(db_conn, case_id)
+    if existing or case.get("case_status") == "RESOLVED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Outcome for case '{case_id}' is finalized and cannot be modified.",
+        )
+
+    # 5. Pull linked prediction ID
+    prediction_id = case.get("parent_alert_id") or ""
     cur = db_conn.cursor()
 
-    if existing:
-        outcome_id = existing["outcome_id"]
-        cur.execute(
-            """
-            UPDATE case_outcomes SET
-                outcome_status = ?,
-                actual_atm_id = ?,
-                is_spatial_hit = ?,
-                recorded_timestamp = ?,
-                notes = ?,
-                investigator_id = ?,
-                dispatch_id = COALESCE(?, dispatch_id)
-            WHERE outcome_id = ?;
-            """,
-            (
-                clean_status,
-                resolved_actual_atm,
-                is_spatial_hit,
-                now_str,
-                notes or existing.get("notes") or "",
-                investigator_id or "INV-DESK-01",
-                dispatch_id,
-                outcome_id,
-            ),
-        )
-    else:
-        outcome_id = generate_outcome_id()
-        cur.execute(
-            """
-            INSERT INTO case_outcomes (
-                outcome_id, case_id, prediction_id, dispatch_id,
-                outcome_status, predicted_atm_id, actual_atm_id,
-                is_spatial_hit, recorded_timestamp, notes, investigator_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """,
-            (
-                outcome_id,
-                case_id,
-                prediction_id,
-                dispatch_id,
-                clean_status,
-                predicted_atm,
-                resolved_actual_atm,
-                is_spatial_hit,
-                now_str,
-                notes or f"Outcome logged by {investigator_id or 'investigator'}.",
-                investigator_id or "INV-DESK-01",
-            ),
-        )
+    outcome_id = generate_outcome_id()
+    cur.execute(
+        """
+        INSERT INTO case_outcomes (
+            outcome_id, case_id, prediction_id, dispatch_id,
+            outcome_status, predicted_atm_id, actual_atm_id,
+            is_spatial_hit, recorded_timestamp, notes, investigator_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """,
+        (
+            outcome_id,
+            case_id,
+            prediction_id,
+            dispatch_id,
+            clean_status,
+            predicted_atm,
+            resolved_actual_atm,
+            is_spatial_hit,
+            now_str,
+            notes or f"Outcome logged by {investigator_id or 'investigator'}.",
+            investigator_id or "INV-DESK-01",
+        ),
+    )
 
-    # 6. Auto-advance case lifecycle to RESOLVED if requested and not already resolved
-    if auto_resolve_case and case.get("case_status") != "RESOLVED":
-        if case.get("case_status") == "NEW_ALERT":
+    # 6. Advance case lifecycle: resolve to RESOLVED if requested, otherwise advance to OUTCOME_PENDING
+    if auto_resolve_case:
+        if case.get("case_status") != "RESOLVED":
             transition_case_status(
                 db_conn=db_conn,
                 case_id=case_id,
-                target_status="PATROL_DISPATCHED",
-                notes=f"Auto-advanced to dispatch for outcome recording: {clean_status}.",
+                target_status="RESOLVED",
+                notes=f"Outcome recorded: {clean_status} (Spatial hit: {bool(is_spatial_hit)}).",
             )
+    elif case.get("case_status") == "PATROL_DISPATCHED":
         transition_case_status(
             db_conn=db_conn,
             case_id=case_id,
-            target_status="RESOLVED",
-            notes=f"Outcome recorded: {clean_status} (Spatial hit: {bool(is_spatial_hit)}).",
+            target_status="OUTCOME_PENDING",
+            notes=f"Outcome recording in progress: {clean_status}.",
         )
 
     return get_outcome_by_id(db_conn, outcome_id)

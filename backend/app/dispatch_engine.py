@@ -104,6 +104,18 @@ def create_or_get_patrol_dispatch(
 
     # 2. Check if dispatch already exists
     existing = get_dispatch_by_case_id(db_conn, case_id)
+    if mark_dispatched:
+        if existing and existing.get("dispatch_status") == "DISPATCHED":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Case '{case_id}' has already been dispatched. Cannot dispatch twice.",
+            )
+        if case.get("case_status") == "RESOLVED":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Case '{case_id}' has already been dispatched and resolved. Cannot dispatch twice.",
+            )
+
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # 3. Pull tactical playbook and lead window from linked prediction

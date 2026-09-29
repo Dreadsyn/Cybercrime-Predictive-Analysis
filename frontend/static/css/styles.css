@@ -624,12 +624,39 @@ body {
   margin-bottom: 10px;
   flex-wrap: wrap;
   gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.case-header-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.case-identity-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.case-operational-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .hero-urgency-cluster {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
+  max-width: 100%;
 }
 
 .hero-score-pill {
@@ -668,19 +695,121 @@ body {
   gap: 6px;
 }
 
-.btn-copy-brief {
-  background: #ffffff;
-  border: 1px solid var(--border-muted);
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 4px 9px;
-  border-radius: var(--radius-sm);
+/* ==============================================================================
+   Unified Operational Button System (Strict 32px height, 4px radius, no emojis)
+   ============================================================================== */
+.hero-operational-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.toolbar-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-op-primary {
+  height: 32px;
+  padding: 0 12px;
+  background: var(--accent-teal);
+  color: #ffffff;
+  border: 1px solid var(--accent-teal-dark);
+  border-radius: var(--radius-xs);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 6px;
   transition: all 0.15s ease;
+  box-sizing: border-box;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn-op-primary:hover:not(:disabled) {
+  background: var(--accent-teal-dark);
+  box-shadow: var(--shadow-xs);
+}
+
+.btn-op-primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn-op-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-op-secondary {
+  height: 32px;
+  padding: 0 12px;
+  background: #ffffff;
+  color: var(--text-main);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-xs);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn-op-secondary:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: var(--text-main);
+}
+
+.btn-op-secondary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn-op-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.btn-copy-brief {
+  height: 32px;
+  padding: 0 10px;
+  background: #ffffff;
+  border: 1px solid var(--border-muted);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .btn-copy-brief:hover {
@@ -696,19 +825,125 @@ body {
 }
 
 .btn-action-ghost {
+  height: 32px;
+  padding: 0 10px;
   background: transparent;
   border: 1px solid transparent;
   color: var(--accent-blue);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .btn-action-ghost:hover {
   background: #f0f9ff;
   border-color: #bae6fd;
+}
+
+/* ==============================================================================
+   Final Incident Resolution Audit Report Card
+   ============================================================================== */
+.final-outcome-report-card {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid var(--accent-teal);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-top: 10px;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.final-outcome-report-card .report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.final-outcome-report-card .report-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.final-outcome-report-card .report-heading {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-main);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.final-outcome-report-card .report-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px 12px;
+}
+
+@media (max-width: 650px) {
+  .final-outcome-report-card .report-telemetry-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.final-outcome-report-card .report-cell {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-xs);
+  padding: 6px 10px;
+  box-sizing: border-box;
+}
+
+.final-outcome-report-card .report-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+
+.final-outcome-report-card .report-val {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-main);
+  word-break: break-word;
+}
+
+.final-outcome-report-card .report-notes-box {
+  margin-top: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-xs);
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+.final-outcome-report-card .report-notes-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+
+.final-outcome-report-card .report-notes-content {
+  font-size: 0.78rem;
+  color: var(--text-main);
+  line-height: 1.4;
 }
 
 /* Alert Lifecycle State Badges (Feature: Alert Deduplication & Escalation) */
@@ -769,7 +1004,11 @@ body {
   border-radius: var(--radius-xs);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .case-status-badge.status-new_alert,
@@ -783,6 +1022,12 @@ body {
   background: #fef3c7;
   color: #b45309;
   border: 1px solid #fde68a;
+}
+
+.case-status-badge.status-outcome_pending {
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fde047;
 }
 
 .case-status-badge.status-resolved {
@@ -827,6 +1072,9 @@ body {
   color: #9d174d;
   border: 1px solid #fbcfe8;
   letter-spacing: 0.03em;
+  white-space: nowrap;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .dispatch-badge.status-dispatched {
@@ -847,6 +1095,9 @@ body {
   color: #166534;
   border: 1px solid #bbf7d0;
   letter-spacing: 0.03em;
+  white-space: nowrap;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .outcome-badge.outcome-hit {

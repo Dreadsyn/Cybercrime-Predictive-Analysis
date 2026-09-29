@@ -1550,16 +1550,36 @@ def test_valid_case_lifecycle_transitions():
     assert update_res1["case_status"] == "PATROL_DISPATCHED"
     assert "Unit 4 dispatched" in (update_res1["notes"] or "")
 
-    # Transition 2: PATROL_DISPATCHED -> RESOLVED
+    # Transition 2: PATROL_DISPATCHED -> OUTCOME_PENDING
     update_res2 = update_case_status(
+        case_id=case_id,
+        request=CaseStatusUpdateRequest(
+            status="OUTCOME_PENDING",
+            notes="Patrol on scene; observing target dispenser",
+        ),
+    )
+    assert update_res2["case_status"] == "OUTCOME_PENDING"
+
+    # Operational outcome must be recorded before case can be resolved
+    with get_db_connection() as conn:
+        create_or_get_patrol_dispatch(conn, case_id, patrol_unit="PCR-WEST-04", auto_advance_case=False)
+        record_or_update_case_outcome(
+            conn,
+            case_id,
+            "INTERCEPTED_AT_PREDICTED_ATM",
+            auto_resolve_case=False,
+        )
+
+    # Transition 3: OUTCOME_PENDING -> RESOLVED
+    update_res3 = update_case_status(
         case_id=case_id,
         request=CaseStatusUpdateRequest(
             status="RESOLVED",
             notes="Perimeter secured; cash-out deterred",
         ),
     )
-    assert update_res2["case_status"] == "RESOLVED"
-    assert "deterred" in (update_res2["notes"] or "")
+    assert update_res3["case_status"] == "RESOLVED"
+    assert "deterred" in (update_res3["notes"] or "")
 
     # Verify DB persistence
     with get_db_connection() as conn:
@@ -1573,6 +1593,7 @@ def test_invalid_case_lifecycle_transitions():
     Verifies that illegal status transitions are rejected with HTTP 400:
     - NEW_ALERT -> RESOLVED (direct skipping)
     - NEW_ALERT -> NEW_ALERT (same status)
+    - PATROL_DISPATCHED -> RESOLVED before outcome recorded
     - RESOLVED -> PATROL_DISPATCHED (re-opening/backward)
     - Any unknown status string
     - Non-existent case ID produces HTTP 404
@@ -1611,9 +1632,19 @@ def test_invalid_case_lifecycle_transitions():
         update_case_status(case_id, CaseStatusUpdateRequest(status="NEW_ALERT"))
     assert exc_info.value.status_code == 400
 
-    # 3. Advance to PATROL_DISPATCHED, then RESOLVED
+    # 3. Advance to PATROL_DISPATCHED
     update_case_status(case_id, CaseStatusUpdateRequest(status="PATROL_DISPATCHED"))
-    update_case_status(case_id, CaseStatusUpdateRequest(status="RESOLVED"))
+
+    # Attempting to resolve without an outcome record raises HTTP 400
+    with pytest.raises(HTTPException) as exc_info:
+        update_case_status(case_id, CaseStatusUpdateRequest(status="RESOLVED"))
+    assert exc_info.value.status_code == 400
+    assert "before an operational outcome is recorded" in exc_info.value.detail
+
+    # Record outcome with auto_resolve_case=True to legitimately transition to RESOLVED
+    with get_db_connection() as conn:
+        create_or_get_patrol_dispatch(conn, case_id, patrol_unit="PCR-WEST-01", auto_advance_case=False)
+        record_or_update_case_outcome(conn, case_id, "INTERCEPTED_AT_PREDICTED_ATM", auto_resolve_case=True)
 
     # 4. Illegal transition: from RESOLVED back to PATROL_DISPATCHED
     with pytest.raises(HTTPException) as exc_info:
@@ -1670,8 +1701,17 @@ def test_get_case_and_list_cases_endpoints():
     assert case_detail["predicted_atm_id"] == pred_res.get("predicted_atm_id")
 
     # 3. Filter cases by status
-    update_case_status(created_case_id, CaseStatusUpdateRequest(status="PATROL_DISPATCHED"))
-    update_case_status(created_case_id, CaseStatusUpdateRequest(status="RESOLVED"))
+    dispatch_patrol_endpoint(
+        created_case_id,
+        DispatchCreateRequest(patrol_unit="PCR-WEST-01"),
+    )
+    record_case_outcome_endpoint(
+        created_case_id,
+        CaseOutcomeCreateRequest(
+            outcome_status="INTERCEPTED_AT_PREDICTED_ATM",
+            auto_resolve_case=True,
+        ),
+    )
 
     resolved_cases = list_cases(status="RESOLVED", limit=10)
     assert isinstance(resolved_cases, list)
@@ -2038,6 +2078,12 @@ def test_record_case_outcome_other_atm():
     pred_res = predict_cashout_location(req)
     case_id = pred_res["case_id"]
 
+    # Dispatch patrol prior to recording outcome
+    dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-NORTH-04"),
+    )
+
     outcome_req = CaseOutcomeCreateRequest(
         outcome_status="INTERCEPTED_AT_OTHER_ATM",
         actual_atm_id="ATM-NO-012",
@@ -2083,6 +2129,12 @@ def test_outcome_auto_resolves_case_flag():
     pred_res = predict_cashout_location(req)
     case_id = pred_res["case_id"]
 
+    # Dispatch patrol prior to outcome logging
+    dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-SOUTH-02"),
+    )
+
     # Record outcome with auto_resolve_case=False
     outcome_req = CaseOutcomeCreateRequest(
         outcome_status="NO_CASHOUT",
@@ -2092,7 +2144,7 @@ def test_outcome_auto_resolves_case_flag():
     record_case_outcome_endpoint(case_id=case_id, request=outcome_req)
 
     c = get_case_details(case_id)
-    assert c["case_status"] == "NEW_ALERT"
+    assert c["case_status"] == "OUTCOME_PENDING"
 
 
 def test_get_case_outcome_and_list_endpoints():
@@ -2120,18 +2172,24 @@ def test_get_case_outcome_and_list_endpoints():
         get_case_outcome_endpoint(case_id)
     assert exc_info.value.status_code == 404
 
-    # 2. Record outcome
+    # 2. Dispatch patrol
+    dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-EAST-05"),
+    )
+
+    # 3. Record outcome
     record_case_outcome_endpoint(
         case_id=case_id,
         request=CaseOutcomeCreateRequest(outcome_status="FALSE_ALERT", notes="Benign transfer confirmed with victim"),
     )
 
-    # 3. Retrieve outcome
+    # 4. Retrieve outcome
     out = get_case_outcome_endpoint(case_id)
     assert out["case_id"] == case_id
     assert out["outcome_status"] == "FALSE_ALERT"
 
-    # 4. List outcomes
+    # 5. List outcomes
     all_outcomes = list_outcomes_endpoint(limit=10)
     assert isinstance(all_outcomes, list)
     assert any(o["case_id"] == case_id for o in all_outcomes)
@@ -2156,6 +2214,10 @@ def test_outcome_metrics_calculation():
         complaint_id="CMP-TEST-METRICS-01",
     )
     c1 = predict_cashout_location(req1)["case_id"]
+    dispatch_patrol_endpoint(
+        case_id=c1,
+        request=DispatchCreateRequest(patrol_unit="PCR-WEST-11"),
+    )
     record_case_outcome_endpoint(
         case_id=c1,
         request=CaseOutcomeCreateRequest(outcome_status="INTERCEPTED_AT_PREDICTED_ATM"),
@@ -2174,6 +2236,10 @@ def test_outcome_metrics_calculation():
         complaint_id="CMP-TEST-METRICS-02",
     )
     c2 = predict_cashout_location(req2)["case_id"]
+    dispatch_patrol_endpoint(
+        case_id=c2,
+        request=DispatchCreateRequest(patrol_unit="PCR-NORTH-12"),
+    )
     record_case_outcome_endpoint(
         case_id=c2,
         request=CaseOutcomeCreateRequest(outcome_status="FALSE_ALERT"),
@@ -2346,6 +2412,224 @@ def test_intervention_performance_direct_engine():
     assert "performance_by_zone" in res
     assert "performance_by_atm" in res
     assert isinstance(res["timing"]["sampled_timed_cases"], int)
+
+
+# ==============================================================================
+# SECTION 15: SEQUENTIAL OPERATIONAL STATE MACHINE GUARDRAIL TESTS
+# ==============================================================================
+
+def test_cannot_log_outcome_before_dispatch():
+    """
+    Verifies Guardrail 1: Attempting to log an operational outcome on a NEW_ALERT case
+    prior to patrol dispatch is rejected with HTTP 400.
+    """
+    req = PredictionRequest(
+        crime_category="PHISHING_UPI",
+        reported_amount=50000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_EAST",
+        reporting_delay_mins=20.0,
+        incident_hour=14,
+        incident_day_of_week=3,
+        complaint_id="CMP-TEST-GUARD-NODISP-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    # Attempt to log outcome before dispatch -> HTTP 400
+    with pytest.raises(HTTPException) as exc_info:
+        record_case_outcome_endpoint(
+            case_id=case_id,
+            request=CaseOutcomeCreateRequest(
+                outcome_status="INTERCEPTED_AT_PREDICTED_ATM",
+                notes="Premature outcome logging test",
+            ),
+        )
+    assert exc_info.value.status_code == 400
+    assert "before patrol is dispatched" in exc_info.value.detail.lower()
+
+
+def test_cannot_dispatch_twice():
+    """
+    Verifies Guardrail 2: A case that has already been dispatched cannot be dispatched again;
+    subsequent dispatch requests are rejected with HTTP 400.
+    """
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=80000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_HDFC_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=15.0,
+        incident_hour=16,
+        incident_day_of_week=4,
+        complaint_id="CMP-TEST-GUARD-NODBLDISP-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    # 1. First dispatch succeeds
+    disp1 = dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-WEST-01"),
+    )
+    assert disp1["dispatch_status"] == "DISPATCHED"
+
+    # 2. Second dispatch rejected -> HTTP 400
+    with pytest.raises(HTTPException) as exc_info:
+        dispatch_patrol_endpoint(
+            case_id=case_id,
+            request=DispatchCreateRequest(patrol_unit="PCR-WEST-02"),
+        )
+    assert exc_info.value.status_code == 400
+    assert "cannot dispatch twice" in exc_info.value.detail.lower() or "already been dispatched" in exc_info.value.detail.lower()
+
+
+def test_cannot_resolve_before_outcome_recorded():
+    """
+    Verifies Guardrail 3: Transitioning a case to RESOLVED without a recorded operational
+    outcome is rejected with HTTP 400.
+    """
+    req = PredictionRequest(
+        crime_category="LOAN_SCAM",
+        reported_amount=35000.0,
+        payment_channel="NEFT",
+        mule_bank_code="BANK_PNB_SYNTH",
+        mule_account_tier="STANDARD",
+        mule_branch_zone="ZONE_NORTH",
+        reporting_delay_mins=45.0,
+        incident_hour=10,
+        incident_day_of_week=2,
+        complaint_id="CMP-TEST-GUARD-NOOUT-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    # Dispatch patrol
+    dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-NORTH-01"),
+    )
+
+    # Attempt to resolve case directly without outcome -> HTTP 400
+    with pytest.raises(HTTPException) as exc_info:
+        update_case_status(case_id, CaseStatusUpdateRequest(status="RESOLVED"))
+    assert exc_info.value.status_code == 400
+    assert "before an operational outcome is recorded" in exc_info.value.detail.lower()
+
+
+def test_finalized_outcome_cannot_be_modified():
+    """
+    Verifies Guardrail 4: Once an outcome is recorded and the case is resolved,
+    subsequent attempts to modify or overwrite the outcome are rejected with HTTP 400.
+    """
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=90000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=10.0,
+        incident_hour=15,
+        incident_day_of_week=4,
+        complaint_id="CMP-TEST-GUARD-FINAL-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    # 1. Dispatch
+    dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-WEST-15"),
+    )
+
+    # 2. Record initial outcome and resolve case
+    record_case_outcome_endpoint(
+        case_id=case_id,
+        request=CaseOutcomeCreateRequest(
+            outcome_status="INTERCEPTED_AT_PREDICTED_ATM",
+            notes="Suspect intercepted in cash-out queue",
+            auto_resolve_case=True,
+        ),
+    )
+
+    c = get_case_details(case_id)
+    assert c["case_status"] == "RESOLVED"
+
+    # 3. Attempt to re-record or mutate finalized outcome -> HTTP 400
+    with pytest.raises(HTTPException) as exc_info:
+        record_case_outcome_endpoint(
+            case_id=case_id,
+            request=CaseOutcomeCreateRequest(
+                outcome_status="FALSE_ALERT",
+                notes="Attempted post-resolution alteration",
+            ),
+        )
+    assert exc_info.value.status_code == 400
+    assert "finalized and cannot be modified" in exc_info.value.detail.lower()
+
+
+def test_spatial_hit_and_unresolved_terminal_outcomes():
+    """
+    Verifies that INTERCEPTED_AT_PREDICTED_ATM marks a spatial hit and properly resolves the case,
+    and UNRESOLVED marks is_spatial_hit=False and also cleanly resolves the case.
+    """
+    # 1. Test INTERCEPTED_AT_PREDICTED_ATM
+    req1 = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=70000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=12.0,
+        incident_hour=14,
+        incident_day_of_week=3,
+        complaint_id="CMP-TEST-TERM-HIT-01",
+    )
+    p1 = predict_cashout_location(req1)
+    dispatch_patrol_endpoint(p1["case_id"], DispatchCreateRequest(patrol_unit="PCR-WEST-21"))
+    out1 = record_case_outcome_endpoint(
+        p1["case_id"],
+        CaseOutcomeCreateRequest(
+            outcome_status="INTERCEPTED_AT_PREDICTED_ATM",
+            auto_resolve_case=True,
+        ),
+    )
+    assert out1["is_spatial_hit"] is True
+    assert get_case_details(p1["case_id"])["case_status"] == "RESOLVED"
+
+    # 2. Test UNRESOLVED
+    req2 = PredictionRequest(
+        crime_category="PHISHING_UPI",
+        reported_amount=32000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_HDFC_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_NORTH",
+        reporting_delay_mins=25.0,
+        incident_hour=16,
+        incident_day_of_week=5,
+        complaint_id="CMP-TEST-TERM-UNRES-01",
+    )
+    p2 = predict_cashout_location(req2)
+    dispatch_patrol_endpoint(p2["case_id"], DispatchCreateRequest(patrol_unit="PCR-NORTH-22"))
+    out2 = record_case_outcome_endpoint(
+        p2["case_id"],
+        CaseOutcomeCreateRequest(
+            outcome_status="UNRESOLVED",
+            notes="Suspect evaded perimeter before unit arrival",
+            auto_resolve_case=True,
+        ),
+    )
+    assert out2["is_spatial_hit"] is False
+    assert out2["outcome_status"] == "UNRESOLVED"
+    assert get_case_details(p2["case_id"])["case_status"] == "RESOLVED"
+
 
 
 

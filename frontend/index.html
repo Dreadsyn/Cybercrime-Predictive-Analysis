@@ -20,7 +20,9 @@
   <!-- 1. Top Navbar / Header -->
   <header class="app-header">
     <div class="brand-section">
-      <div class="brand-shield">&#128737;</div>
+      <div class="brand-shield">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
       <div class="brand-text">
         <h1>Cybercrime Predictive Analytics</h1>
         <div class="brand-meta">
@@ -101,7 +103,9 @@
         
         <!-- General Form Error Banner -->
         <div id="formGeneralError" class="form-general-error" style="display:none;" role="alert">
-          <span class="general-error-icon">&#9888;</span>
+          <span class="general-error-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </span>
           <span class="error-msg"></span>
         </div>
 
@@ -216,42 +220,59 @@
 
       <!-- Initial State Prompt: Ready for Intake -->
       <div id="forecastCardPlaceholder" class="forecast-placeholder-card">
-        <div class="placeholder-icon">&#128737;</div>
+        <div class="placeholder-icon">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
         <div class="placeholder-title">Awaiting Incident Complaint Intake</div>
         <div class="placeholder-subtitle">
           Select an operational scenario preset above or submit complaint parameters to trigger calibrated spatial forecasting, tactical triage, and field patrol routing.
         </div>
         <div class="placeholder-chips">
-          <span class="placeholder-chip">&#10003; Calibrated Top-1 ATM Inference</span>
-          <span class="placeholder-chip">&#10003; Empirical IQR Lead Time</span>
-          <span class="placeholder-chip">&#10003; Deterministic 0–100 Priority</span>
+          <span class="placeholder-chip">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Calibrated Top-1 ATM Inference
+          </span>
+          <span class="placeholder-chip">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Empirical IQR Lead Time
+          </span>
+          <span class="placeholder-chip">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Deterministic 0–100 Priority
+          </span>
         </div>
       </div>
 
       <!-- Forecast Output Result Card (Hero Presentation) -->
       <div id="forecastCard" class="forecast-result-card">
-        <!-- 1. Hero Alert Header (Urgency & Score) -->
+        <!-- 1. Hero Alert Header (Structured Operational Case Header) -->
         <div class="hero-alert-header">
-          <div class="hero-urgency-cluster">
-            <span id="predCaseIdBadge" class="case-id-badge" style="display:none;"></span>
-            <span id="predPriorityBadge" class="priority-tag priority-critical">CRITICAL</span>
-            <div class="hero-score-pill">
-              <span class="hero-score-label">Priority</span>
-              <span id="predPriorityScore" class="hero-score-val">--</span>
-              <span class="hero-score-denom">/100</span>
+          <div class="case-header-primary">
+            <!-- Row 1: Case Identity and Priority Triage -->
+            <div class="case-identity-strip">
+              <span id="predCaseIdBadge" class="case-id-badge" style="display:none;"></span>
+              <span id="predPriorityBadge" class="priority-tag priority-critical">CRITICAL</span>
+              <div class="hero-score-pill">
+                <span class="hero-score-label">Priority</span>
+                <span id="predPriorityScore" class="hero-score-val">--</span>
+                <span class="hero-score-denom">/100</span>
+              </div>
+              <span id="predAlertStateBadge" class="alert-state-badge state-new" style="display:none;">NEW ALERT</span>
             </div>
-            <span id="predCaseStatusBadge" class="case-status-badge status-new_alert" style="display:none;">NEW_ALERT</span>
-            <span id="predAlertStateBadge" class="alert-state-badge state-new" style="display:none;">NEW ALERT</span>
-            <span id="predDispatchBadge" class="dispatch-badge" style="display:none;">READY</span>
-            <span id="predOutcomeBadge" class="outcome-badge" style="display:none;">INTERCEPTED</span>
-            <span id="predRiskBadge" class="risk-tag risk-critical" style="display:none;">CRITICAL RISK</span>
+            <!-- Row 2: Operational Lifecycle, Dispatch & Outcome Status -->
+            <div class="case-operational-strip">
+              <span id="predCaseStatusBadge" class="case-status-badge status-new_alert" style="display:none;">CASE STATUS: NEW ALERT</span>
+              <span id="predDispatchBadge" class="dispatch-badge" style="display:none;">DISPATCH: READY</span>
+              <span id="predOutcomeBadge" class="outcome-badge" style="display:none;"></span>
+            </div>
           </div>
           <div class="hero-header-actions">
             <button type="button" id="btnFocusTargetMap" class="btn-action-ghost" title="Focus Target ATM on Tactical Map">
-              <span>&#128506; Focus Map</span>
+              <svg class="btn-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+              <span>Focus Map</span>
             </button>
             <button type="button" id="btnCopyDispatch" class="btn-copy-brief" title="Copy Dispatch Brief for Field Patrol">
-              <span id="copyBriefIcon">&#128203;</span>
+              <svg class="btn-icon" id="copyBriefIconSvg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               <span id="copyBriefText">Copy Brief</span>
             </button>
           </div>
@@ -260,36 +281,86 @@
         <!-- 1b. Dedicated Operational Action Toolbar -->
         <div class="hero-operational-toolbar">
           <div class="toolbar-primary-actions">
-            <button type="button" id="btnCaseTransition" class="btn-case-transition" style="display:none;" title="Advance Case Lifecycle">
+            <button type="button" id="btnCaseTransition" class="btn-op-primary" style="display:none;" title="Advance Case Lifecycle">
+              <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
               <span id="caseTransitionText">Dispatch Patrol</span>
             </button>
-            <button type="button" id="btnRecordOutcome" class="btn-action-outcome" style="display:none;" title="Record Actual Incident Outcome">
-              <span>&#9989; Log Outcome</span>
+            <button type="button" id="btnRecordOutcome" class="btn-op-primary" style="display:none;" title="Record Actual Incident Outcome">
+              <svg class="btn-icon" id="recordOutcomeIconSvg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="m9 14 2 2 4-4"/></svg>
+              <span id="recordOutcomeText">Log Outcome</span>
             </button>
-            <button type="button" id="btnViewDispatch" class="btn-action-ghost" style="display:none;" title="View Field Dispatch Details">
-              <span>&#128659; Dispatch Details</span>
+            <button type="button" id="btnViewDispatch" class="btn-op-secondary" style="display:none;" title="View Field Dispatch Details">
+              <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span>Dispatch Details</span>
             </button>
           </div>
           <div class="evidence-export-container" style="display:inline-block; position:relative;">
-            <button type="button" id="btnExportEvidence" class="btn-action-ghost" style="display:none;" title="Export Structured Case Evidence">
-              <span>&#128190; Export Evidence &#9662;</span>
+            <button type="button" id="btnExportEvidence" class="btn-op-secondary" style="display:none;" title="Export Structured Case Evidence">
+              <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Export Evidence</span>
+              <svg class="btn-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="evidenceDropdown" class="evidence-dropdown-menu" style="display:none;">
-              <a href="#" id="btnExportJson" class="evidence-menu-item">Download JSON</a>
-              <a href="#" id="btnExportCsv" class="evidence-menu-item">Download CSV</a>
+              <a href="#" id="btnExportJson" class="evidence-menu-item">Download JSON Packet</a>
+              <a href="#" id="btnExportCsv" class="evidence-menu-item">Download CSV Record</a>
             </div>
+          </div>
+        </div>
+
+        <!-- Final Operational Outcome Report Card (Visible strictly when case is RESOLVED) -->
+        <div id="heroFinalOutcomeRecord" class="final-outcome-report-card" style="display:none;">
+          <div class="report-header">
+            <div class="report-title-group">
+              <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              <span class="report-heading">Official Incident Resolution Audit Report</span>
+            </div>
+            <span id="reportOutcomeBadge" class="outcome-badge outcome-hit">OUTCOME: INTERCEPTED</span>
+          </div>
+          <div class="report-telemetry-grid">
+            <div class="report-cell">
+              <div class="report-label">Case Status</div>
+              <div class="report-val" id="reportCaseStatus">CLOSED</div>
+            </div>
+            <div class="report-cell">
+              <div class="report-label">Prediction Verification</div>
+              <div class="report-val" id="reportSpatialHit">Confirmed Spatial Hit</div>
+            </div>
+            <div class="report-cell">
+              <div class="report-label">Target ATM</div>
+              <div class="report-val font-mono" id="reportPredictedAtm">--</div>
+            </div>
+            <div class="report-cell">
+              <div class="report-label">Actual Cashout ATM</div>
+              <div class="report-val font-mono" id="reportActualAtm">--</div>
+            </div>
+            <div class="report-cell">
+              <div class="report-label">Dispatched Unit</div>
+              <div class="report-val font-mono" id="reportUnit">--</div>
+            </div>
+            <div class="report-cell">
+              <div class="report-label">Resolution Timestamp</div>
+              <div class="report-val" id="reportTimestamp">--</div>
+            </div>
+          </div>
+          <div class="report-notes-box">
+            <div class="report-notes-label">Investigator Debrief Remarks:</div>
+            <div class="report-notes-content" id="reportNotes">No remarks recorded.</div>
           </div>
         </div>
 
         <!-- Alert Lifecycle Notification Banner (Refresh / Escalation Rationale) -->
         <div id="predAlertLifecycleNote" class="alert-lifecycle-banner" style="display:none;">
-          <span class="lifecycle-note-icon">&#9432;</span>
+          <span class="lifecycle-note-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          </span>
           <span id="predAlertLifecycleText" class="lifecycle-note-text"></span>
         </div>
 
         <!-- 2. Primary Immediate Action Callout (Answering "What action is recommended?") -->
         <div class="hero-action-callout">
-          <div class="action-callout-icon">&#9889;</div>
+          <div class="action-callout-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
           <div class="action-callout-body">
             <div class="action-callout-label">Recommended Immediate Action</div>
             <div id="heroActionDirective" class="action-callout-text">
@@ -423,8 +494,14 @@
             <select id="quickAtmSelect" class="quick-atm-select" title="Quick Jump to ATM">
               <option value="">Jump to ATM...</option>
             </select>
-            <button type="button" id="btnResetMapView" class="btn-map-control" title="Reset View to Metro Overview">&#8635; Reset</button>
-            <button type="button" id="btnToggleMapFullscreen" class="btn-map-control" title="Toggle Fullscreen Map">&#x26F6; Fullscreen</button>
+            <button type="button" id="btnResetMapView" class="btn-map-control" title="Reset View to Metro Overview">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              <span>Reset</span>
+            </button>
+            <button type="button" id="btnToggleMapFullscreen" class="btn-map-control" title="Toggle Fullscreen Map">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+              <span>Fullscreen</span>
+            </button>
           </div>
         </div>
       </div>
@@ -446,7 +523,9 @@
       <div id="selectedLocationPanel" class="selected-location-panel">
         <div class="location-panel-header">
           <div class="location-header-title">
-            <span class="location-icon">&#128205;</span>
+            <span class="location-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </span>
             <div>
               <div class="location-name-row">
                 <span id="selAtmId" class="selected-atm-id">No ATM Selected</span>
@@ -834,8 +913,8 @@
           <div id="dispModalTacticalBrief" style="color: var(--text-muted); margin-top: 4px; line-height: 1.4;">--</div>
         </div>
         <div class="modal-actions-row" style="margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px;">
-          <button type="button" id="btnCancelDispatchModal" class="btn-action-ghost">Close</button>
-          <button type="button" id="btnConfirmDispatchModal" class="btn-case-transition">Dispatch Unit</button>
+          <button type="button" id="btnCancelDispatchModal" class="btn-op-secondary">Close</button>
+          <button type="button" id="btnConfirmDispatchModal" class="btn-op-primary">Dispatch Unit</button>
         </div>
       </div>
     </div>
@@ -845,7 +924,7 @@
   <div id="outcomeModal" class="modal-overlay">
     <div class="modal-dialog">
       <div class="modal-title-row">
-        <h3 style="font-size: 1rem; font-weight: 700;">Record Incident Outcome &amp; Interception Feedback</h3>
+        <h3 id="outcomeModalTitle" style="font-size: 1rem; font-weight: 700;">Record Incident Outcome &amp; Interception Feedback</h3>
         <button id="closeOutcomeModalBtn" class="btn-close-modal" type="button">&times;</button>
       </div>
       <div class="outcome-modal-content">
@@ -860,30 +939,78 @@
           <div><b>Current Status:</b> <span id="outcomeModalCurrentStatus">--</span></div>
           <div><b>Dispatch Unit:</b> <span id="outcomeModalUnit">--</span></div>
         </div>
-        <div class="outcome-input-row" style="margin-top: 12px;">
-          <label for="outcomeStatusSelect" style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 4px;">Operational Outcome:</label>
-          <select id="outcomeStatusSelect" class="mini-select" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: 4px; box-sizing: border-box;">
-            <option value="INTERCEPTED_AT_PREDICTED_ATM" selected>INTERCEPTED_AT_PREDICTED_ATM (Target Intercepted - Spatial Hit)</option>
-            <option value="INTERCEPTED_AT_OTHER_ATM">INTERCEPTED_AT_OTHER_ATM (Intercepted at Adjacent/Other ATM)</option>
-            <option value="NO_CASHOUT">NO_CASHOUT (No Cashout Attempted)</option>
-            <option value="FALSE_ALERT">FALSE_ALERT (False Alert / Benign Activity)</option>
-            <option value="UNRESOLVED">UNRESOLVED (Suspect Evaded / Unresolved)</option>
-          </select>
+
+        <!-- Editable Form Mode (Available for active cases) -->
+        <div id="outcomeModalFormMode">
+          <div class="outcome-input-row" style="margin-top: 12px;">
+            <label for="outcomeStatusSelect" style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 4px;">Operational Outcome:</label>
+            <select id="outcomeStatusSelect" class="mini-select" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: 4px; box-sizing: border-box;">
+              <option value="INTERCEPTED_AT_PREDICTED_ATM" selected>INTERCEPTED_AT_PREDICTED_ATM (Target Intercepted - Spatial Hit)</option>
+              <option value="INTERCEPTED_AT_OTHER_ATM">INTERCEPTED_AT_OTHER_ATM (Intercepted at Adjacent/Other ATM)</option>
+              <option value="NO_CASHOUT">NO_CASHOUT (No Cashout Attempted)</option>
+              <option value="FALSE_ALERT">FALSE_ALERT (False Alert / Benign Activity)</option>
+              <option value="UNRESOLVED">UNRESOLVED (Suspect Evaded / Unresolved)</option>
+            </select>
+          </div>
+          <div class="outcome-input-row" style="margin-top: 8px;">
+            <label for="outcomeActualAtmInput" style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 4px;">Actual Cash-Out ATM ID (if known / different):</label>
+            <input type="text" id="outcomeActualAtmInput" class="mini-text-input" placeholder="e.g. ATM-WE-048" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: 4px; box-sizing: border-box;">
+          </div>
+          <div class="outcome-input-row" style="margin-top: 8px;">
+            <label for="outcomeNotesInput" style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 4px;">Investigator Debrief &amp; Outcome Notes:</label>
+            <textarea id="outcomeNotesInput" rows="2" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: 4px; box-sizing: border-box;" placeholder="Enter seizure amount, suspect details, or patrol notes..."></textarea>
+          </div>
+          <div class="outcome-feedback-banner" id="outcomeHitFeedback" style="margin-top: 10px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; padding: 8px 10px; border-radius: 4px; font-size: 0.75rem;">
+            <b>Prediction Verification:</b> <span id="outcomeHitFeedbackText">Confirmed spatial hit on predicted ATM.</span>
+          </div>
         </div>
-        <div class="outcome-input-row" style="margin-top: 8px;">
-          <label for="outcomeActualAtmInput" style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 4px;">Actual Cash-Out ATM ID (if known / different):</label>
-          <input type="text" id="outcomeActualAtmInput" class="mini-text-input" placeholder="e.g. ATM-WE-048" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: 4px; box-sizing: border-box;">
+
+        <!-- Read-Only Report Mode (Displayed when case is already RESOLVED) -->
+        <div id="outcomeModalReportMode" style="display:none; margin-top: 12px;">
+          <div class="final-outcome-report-card">
+            <div class="report-header">
+              <div class="report-title-group">
+                <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                <span class="report-heading">Final Resolution Record (Read-Only)</span>
+              </div>
+              <span id="modalReportOutcomeBadge" class="outcome-badge">--</span>
+            </div>
+            <div class="report-telemetry-grid">
+              <div class="report-cell">
+                <div class="report-label">Case Status</div>
+                <div class="report-val" id="modalReportCaseStatus">RESOLVED / CLOSED</div>
+              </div>
+              <div class="report-cell">
+                <div class="report-label">Prediction Verification</div>
+                <div class="report-val" id="modalReportSpatialHit">--</div>
+              </div>
+              <div class="report-cell">
+                <div class="report-label">Target ATM</div>
+                <div class="report-val font-mono" id="modalReportPredictedAtm">--</div>
+              </div>
+              <div class="report-cell">
+                <div class="report-label">Actual Cashout ATM</div>
+                <div class="report-val font-mono" id="modalReportActualAtm">--</div>
+              </div>
+              <div class="report-cell">
+                <div class="report-label">Dispatch Unit</div>
+                <div class="report-val font-mono" id="modalReportUnit">--</div>
+              </div>
+              <div class="report-cell">
+                <div class="report-label">Logged At</div>
+                <div class="report-val" id="modalReportTimestamp">--</div>
+              </div>
+            </div>
+            <div class="report-notes-box">
+              <div class="report-notes-label">Investigator Debrief Remarks:</div>
+              <div class="report-notes-content" id="modalReportNotes">--</div>
+            </div>
+          </div>
         </div>
-        <div class="outcome-input-row" style="margin-top: 8px;">
-          <label for="outcomeNotesInput" style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 4px;">Investigator Debrief &amp; Outcome Notes:</label>
-          <textarea id="outcomeNotesInput" rows="2" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: 4px; box-sizing: border-box;" placeholder="Enter seizure amount, suspect details, or patrol notes..."></textarea>
-        </div>
-        <div class="outcome-feedback-banner" id="outcomeHitFeedback" style="margin-top: 10px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; padding: 8px 10px; border-radius: 4px; font-size: 0.75rem;">
-          <b>Prediction Verification:</b> <span id="outcomeHitFeedbackText">Confirmed spatial hit on predicted ATM.</span>
-        </div>
+
         <div class="modal-actions-row" style="margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px;">
-          <button type="button" id="btnCancelOutcomeModal" class="btn-action-ghost">Close</button>
-          <button type="button" id="btnConfirmOutcomeModal" class="btn-case-transition">Record Outcome &amp; Resolve</button>
+          <button type="button" id="btnCancelOutcomeModal" class="btn-op-secondary">Close</button>
+          <button type="button" id="btnConfirmOutcomeModal" class="btn-op-primary">Record Outcome &amp; Resolve</button>
         </div>
       </div>
     </div>
