@@ -3,7 +3,7 @@
  * Coordinates Geospatial Map, Chart Analytics, Prediction Workbench, Tabs, and Modal Audit.
  */
 
-import { API } from "./api.js";
+import { API, setActiveRole, getActiveRole } from "./api.js";
 import { MapController } from "./map.js";
 import { ChartController } from "./charts.js";
 
@@ -58,12 +58,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupClusterListeners();
   setupConvergenceListeners();
   setupPerformanceListeners();
+  setupConsoleSwitcher();
 
   // Initialize Workflow Ribbon to Step 1: Complaint Intake
   setWorkflowStep(1);
 
   // 3. Load Core Telemetry & Data
   await loadDashboardData();
+
+  // 4. Enforce active role console configuration
+  applyConsoleMode(getActiveRole());
 });
 
 /**
@@ -394,6 +398,63 @@ function setWorkflowStep(stepIndex) {
 }
 
 /**
+ * Maps raw operational outcome status to unified, truth-accurate display presentation.
+ * Enforces strict distinction between spatial hits, corridor hits, false alerts,
+ * no cashouts, and evasions. Never reports false alert or no cashout as a spatial hit.
+ */
+export function getOutcomeDetails(outcome, defaultPredictedAtm = "--") {
+  if (!outcome) return null;
+  const status = (outcome.outcome_status || "").trim().toUpperCase();
+
+  if (status === "INTERCEPTED_AT_PREDICTED_ATM") {
+    return {
+      status,
+      badgeText: "INTERCEPTED AT PREDICTED ATM",
+      badgeClass: "outcome-badge outcome-hit",
+      spatialHitText: "Confirmed Spatial Hit",
+      actualAtmText: outcome.actual_atm_id || defaultPredictedAtm,
+      isHit: true,
+    };
+  } else if (status === "INTERCEPTED_AT_OTHER_ATM") {
+    return {
+      status,
+      badgeText: "INTERCEPTED AT OTHER ATM",
+      badgeClass: "outcome-badge outcome-other",
+      spatialHitText: "Corridor / Adjacent Interception",
+      actualAtmText: outcome.actual_atm_id || "--",
+      isHit: false,
+    };
+  } else if (status === "FALSE_ALERT") {
+    return {
+      status,
+      badgeText: "FALSE ALERT / BENIGN ACTIVITY",
+      badgeClass: "outcome-badge outcome-false",
+      spatialHitText: "Non-Fraud / Benign",
+      actualAtmText: outcome.actual_atm_id || "N/A (Benign Activity)",
+      isHit: false,
+    };
+  } else if (status === "NO_CASHOUT") {
+    return {
+      status,
+      badgeText: "NO CASHOUT ATTEMPTED",
+      badgeClass: "outcome-badge outcome-false",
+      spatialHitText: "No Attempt Detected",
+      actualAtmText: outcome.actual_atm_id || "N/A (No Cashout)",
+      isHit: false,
+    };
+  } else {
+    return {
+      status: status || "UNRESOLVED",
+      badgeText: "UNRESOLVED / SUSPECT EVADED",
+      badgeClass: "outcome-badge outcome-unresolved",
+      spatialHitText: "Suspect Evaded Perimeter",
+      actualAtmText: outcome.actual_atm_id || "Unknown / Unresolved",
+      isHit: false,
+    };
+  }
+}
+
+/**
  * Render predictive inference results to the output card.
  */
 function renderPredictionResult(result) {
@@ -523,6 +584,8 @@ function renderPredictionResult(result) {
     if (outcomeInfo) result._outcome = outcomeInfo;
     const currentDisp = dispatchInfo || result._dispatch || null;
     const currentOut = outcomeInfo || result._outcome || null;
+    const role = getActiveRole();
+    const citizenNotice = document.getElementById("citizenTrackingNotice");
 
     if (caseIdBadge) {
       if (caseId) {
@@ -549,7 +612,7 @@ function renderPredictionResult(result) {
     }
 
     if (dispatchBadge) {
-      if (!caseId) {
+      if (!caseId || role === "reporting") {
         dispatchBadge.style.display = "none";
       } else if (status === "PATROL_DISPATCHED" || status === "OUTCOME_PENDING") {
         const unitName = currentDisp?.patrol_unit_assigned || "PCR";
@@ -568,36 +631,68 @@ function renderPredictionResult(result) {
       }
     }
 
+    const outDetails = getOutcomeDetails(currentOut, result.predicted_atm_id);
+
     if (outcomeBadge) {
-      if (!caseId || !currentOut) {
+      if (!caseId || !outDetails) {
         outcomeBadge.style.display = "none";
       } else {
-        const st = currentOut.outcome_status;
-        let badgeClass = "outcome-badge";
-        let label = (status === "RESOLVED" || status === "CLOSED") ? "FINAL OUTCOME: " : "OUTCOME: ";
-        if (currentOut.is_spatial_hit || st === "INTERCEPTED_AT_PREDICTED_ATM") {
-          badgeClass += " outcome-hit";
-          label += "INTERCEPTED AT PREDICTED ATM";
-        } else if (st === "INTERCEPTED_AT_OTHER_ATM") {
-          badgeClass += " outcome-other";
-          label += "INTERCEPTED AT OTHER ATM";
-        } else if (st === "FALSE_ALERT") {
-          badgeClass += " outcome-false";
-          label += "FALSE ALERT";
-        } else if (st === "NO_CASHOUT") {
-          badgeClass += " outcome-false";
-          label += "NO CASHOUT";
-        } else {
-          badgeClass += " outcome-unresolved";
-          label += "UNRESOLVED — SUSPECT EVADED";
-        }
-        outcomeBadge.className = badgeClass;
-        outcomeBadge.innerText = label;
+        const isClosed = (status === "RESOLVED" || status === "CLOSED");
+        outcomeBadge.className = outDetails.badgeClass;
+        outcomeBadge.innerText = (isClosed ? "FINAL OUTCOME: " : "OUTCOME: ") + outDetails.badgeText;
         outcomeBadge.style.display = "inline-flex";
       }
     }
 
-    // Sequential Operational State Machine Controls
+    // Final Resolution Report Card in Hero
+    const heroReportCard = document.getElementById("heroFinalOutcomeRecord");
+    if (heroReportCard) {
+      if ((status === "RESOLVED" || status === "CLOSED") && outDetails) {
+        heroReportCard.style.display = "block";
+        const repBadge = document.getElementById("reportOutcomeBadge");
+        if (repBadge) {
+          repBadge.className = outDetails.badgeClass;
+          repBadge.innerText = "FINAL OUTCOME: " + outDetails.badgeText;
+        }
+        const repCaseStatus = document.getElementById("reportCaseStatus");
+        if (repCaseStatus) repCaseStatus.innerText = "CLOSED";
+        const repSpatialHit = document.getElementById("reportSpatialHit");
+        if (repSpatialHit) {
+          repSpatialHit.innerText = outDetails.spatialHitText;
+        }
+        const repPredAtm = document.getElementById("reportPredictedAtm");
+        if (repPredAtm) repPredAtm.innerText = result.predicted_atm_id || "--";
+        const repActualAtm = document.getElementById("reportActualAtm");
+        if (repActualAtm) repActualAtm.innerText = outDetails.actualAtmText;
+        const repUnit = document.getElementById("reportUnit");
+        if (repUnit) repUnit.innerText = currentDisp?.patrol_unit_assigned || "PCR Unit";
+        const repTime = document.getElementById("reportTimestamp");
+        if (repTime) repTime.innerText = currentOut?.outcome_timestamp || new Date().toISOString().replace("T", " ").substring(0, 19);
+        const repNotes = document.getElementById("reportNotes");
+        if (repNotes) repNotes.innerText = currentOut?.notes || "No debrief remarks recorded.";
+      } else {
+        heroReportCard.style.display = "none";
+      }
+    }
+
+    // Role-specific operational button enforcement
+    if (role === "reporting") {
+      if (btnTransition) btnTransition.style.display = "none";
+      if (btnRecordOutcome) btnRecordOutcome.style.display = "none";
+      if (btnViewDispatch) btnViewDispatch.style.display = "none";
+      if (btnExportEvidence) btnExportEvidence.style.display = "none";
+
+      if (citizenNotice && caseId) {
+        citizenNotice.style.display = "flex";
+        const cNum = document.getElementById("citizenTrackingNumber");
+        if (cNum) cNum.innerText = caseId;
+      }
+      return;
+    }
+
+    // Investigator Console State Machine Controls
+    if (citizenNotice) citizenNotice.style.display = "none";
+
     if (!caseId) {
       if (btnTransition) btnTransition.style.display = "none";
       if (btnRecordOutcome) btnRecordOutcome.style.display = "none";
@@ -608,39 +703,6 @@ function renderPredictionResult(result) {
 
     if (btnExportEvidence) {
       btnExportEvidence.style.display = "inline-flex";
-    }
-
-    // Final Resolution Report Card in Hero
-    const heroReportCard = document.getElementById("heroFinalOutcomeRecord");
-    if (heroReportCard) {
-      if (status === "RESOLVED" || status === "CLOSED") {
-        heroReportCard.style.display = "block";
-        const repBadge = document.getElementById("reportOutcomeBadge");
-        if (repBadge && outcomeBadge) {
-          repBadge.className = outcomeBadge.className;
-          repBadge.innerText = outcomeBadge.innerText;
-        }
-        const repCaseStatus = document.getElementById("reportCaseStatus");
-        if (repCaseStatus) repCaseStatus.innerText = "CLOSED";
-        const repSpatialHit = document.getElementById("reportSpatialHit");
-        if (repSpatialHit) {
-          repSpatialHit.innerText = (currentOut?.is_spatial_hit || currentOut?.outcome_status === "INTERCEPTED_AT_PREDICTED_ATM") 
-            ? "Confirmed Spatial Hit" 
-            : "Adjacent / Non-Target Resolution";
-        }
-        const repPredAtm = document.getElementById("reportPredictedAtm");
-        if (repPredAtm) repPredAtm.innerText = result.predicted_atm_id || "--";
-        const repActualAtm = document.getElementById("reportActualAtm");
-        if (repActualAtm) repActualAtm.innerText = currentOut?.actual_atm_id || result.predicted_atm_id || "--";
-        const repUnit = document.getElementById("reportUnit");
-        if (repUnit) repUnit.innerText = currentDisp?.patrol_unit_assigned || "PCR Unit";
-        const repTime = document.getElementById("reportTimestamp");
-        if (repTime) repTime.innerText = currentOut?.outcome_timestamp || new Date().toISOString().replace("T", " ").substring(0, 19);
-        const repNotes = document.getElementById("reportNotes");
-        if (repNotes) repNotes.innerText = currentOut?.notes || "No debrief remarks recorded.";
-      } else {
-        heroReportCard.style.display = "none";
-      }
     }
 
     if (status === "NEW_ALERT") {
@@ -692,6 +754,7 @@ function renderPredictionResult(result) {
     }
   }
 
+  window._currentUpdateCaseControls = updateCaseControls;
   updateCaseControls(result.case_id, result.case_status);
 
   // Load existing dispatch if case already has one
@@ -1456,26 +1519,40 @@ async function openOutcomeModal(result) {
     const val = statusSelect.value;
     if (val === "INTERCEPTED_AT_PREDICTED_ATM") {
       actualAtmInput.value = result.predicted_atm_id || "";
+      actualAtmInput.disabled = false;
+      actualAtmInput.placeholder = "Target ATM ID";
       feedbackBanner.style.background = "#ecfdf5";
       feedbackBanner.style.borderColor = "#a7f3d0";
       feedbackBanner.style.color = "#065f46";
       feedbackText.innerText = "Confirmed spatial hit on predicted ATM. Reinforces geospatial accuracy.";
     } else if (val === "INTERCEPTED_AT_OTHER_ATM") {
+      if (actualAtmInput.value === result.predicted_atm_id) actualAtmInput.value = "";
+      actualAtmInput.disabled = false;
+      actualAtmInput.placeholder = "Enter Adjacent ATM ID (e.g. ATM_042)";
       feedbackBanner.style.background = "#eff6ff";
       feedbackBanner.style.borderColor = "#bfdbfe";
       feedbackBanner.style.color = "#1e40af";
       feedbackText.innerText = "Interception at adjacent ATM corridor. Spatial candidate cluster match.";
     } else if (val === "NO_CASHOUT") {
+      actualAtmInput.value = "";
+      actualAtmInput.disabled = true;
+      actualAtmInput.placeholder = "N/A — No cashout detected";
       feedbackBanner.style.background = "#f8fafc";
       feedbackBanner.style.borderColor = "#e2e8f0";
       feedbackBanner.style.color = "#475569";
       feedbackText.innerText = "No cash-out attempt observed during target intervention window.";
     } else if (val === "FALSE_ALERT") {
+      actualAtmInput.value = "";
+      actualAtmInput.disabled = true;
+      actualAtmInput.placeholder = "N/A — Benign activity";
       feedbackBanner.style.background = "#fff1f2";
       feedbackBanner.style.borderColor = "#fecdd3";
       feedbackBanner.style.color = "#9f1239";
       feedbackText.innerText = "Benign or non-fraudulent transaction profile. Flags priority calibration.";
     } else {
+      actualAtmInput.value = "";
+      actualAtmInput.disabled = true;
+      actualAtmInput.placeholder = "N/A — Suspect evaded";
       feedbackBanner.style.background = "#f3f4f6";
       feedbackBanner.style.borderColor = "#e5e7eb";
       feedbackBanner.style.color = "#4b5563";
@@ -1508,7 +1585,8 @@ async function openOutcomeModal(result) {
   }
 
   // Check if outcome already recorded / case resolved (view-only mode)
-  let isFinalized = result.case_status === "RESOLVED";
+  const currentRole = getActiveRole();
+  let isFinalized = result.case_status === "RESOLVED" || result.case_status === "CLOSED" || currentRole === "reporting";
   let existing = null;
   try {
     existing = await API.getCaseOutcome(result.case_id);
@@ -1532,41 +1610,23 @@ async function openOutcomeModal(result) {
       reportMode.style.display = "block";
       const repBadge = document.getElementById("modalReportOutcomeBadge");
       const currentOut = existing || result._outcome;
-      if (repBadge && currentOut) {
-        const st = currentOut.outcome_status;
-        let bCls = "outcome-badge";
-        let bTxt = "FINAL OUTCOME: ";
-        if (currentOut.is_spatial_hit || st === "INTERCEPTED_AT_PREDICTED_ATM") {
-          bCls += " outcome-hit";
-          bTxt += "INTERCEPTED AT PREDICTED ATM";
-        } else if (st === "INTERCEPTED_AT_OTHER_ATM") {
-          bCls += " outcome-other";
-          bTxt += "INTERCEPTED AT OTHER ATM";
-        } else if (st === "FALSE_ALERT") {
-          bCls += " outcome-false";
-          bTxt += "FALSE ALERT";
-        } else if (st === "NO_CASHOUT") {
-          bCls += " outcome-false";
-          bTxt += "NO CASHOUT";
-        } else {
-          bCls += " outcome-unresolved";
-          bTxt += "UNRESOLVED — SUSPECT EVADED";
-        }
-        repBadge.className = bCls;
-        repBadge.innerText = bTxt;
+      const modalOutDetails = getOutcomeDetails(currentOut, result.predicted_atm_id);
+      if (repBadge && modalOutDetails) {
+        repBadge.className = modalOutDetails.badgeClass;
+        repBadge.innerText = "FINAL OUTCOME: " + modalOutDetails.badgeText;
       }
       const repCaseStatus = document.getElementById("modalReportCaseStatus");
       if (repCaseStatus) repCaseStatus.innerText = "CLOSED";
       const repHit = document.getElementById("modalReportSpatialHit");
-      if (repHit) {
-        repHit.innerText = (currentOut?.is_spatial_hit || currentOut?.outcome_status === "INTERCEPTED_AT_PREDICTED_ATM")
-          ? "Confirmed Spatial Hit"
-          : "Adjacent / Non-Target Resolution";
+      if (repHit && modalOutDetails) {
+        repHit.innerText = modalOutDetails.spatialHitText;
       }
       const repPred = document.getElementById("modalReportPredictedAtm");
       if (repPred) repPred.innerText = result.predicted_atm_id || "--";
       const repAct = document.getElementById("modalReportActualAtm");
-      if (repAct) repAct.innerText = currentOut?.actual_atm_id || result.predicted_atm_id || "--";
+      if (repAct && modalOutDetails) {
+        repAct.innerText = modalOutDetails.actualAtmText;
+      }
       const repUnit = document.getElementById("modalReportUnit");
       if (repUnit) repUnit.innerText = result._dispatch?.patrol_unit_assigned || currentOut?.dispatch_id || "Patrol Unit";
       const repTime = document.getElementById("modalReportTimestamp");
@@ -1648,29 +1708,12 @@ function setupOutcomeModalListeners() {
           caseStatusBadge.innerText = "CASE STATUS: CLOSED";
           caseStatusBadge.className = "case-status-badge status-closed";
         }
+        const outDetails = getOutcomeDetails(out, res.predicted_atm_id);
         const outcomeBadge = document.getElementById("predOutcomeBadge");
-        if (outcomeBadge) {
+        if (outcomeBadge && outDetails) {
           outcomeBadge.style.display = "inline-flex";
-          let badgeClass = "outcome-badge";
-          let label = "FINAL OUTCOME: ";
-          if (out.is_spatial_hit || out.outcome_status === "INTERCEPTED_AT_PREDICTED_ATM") {
-            badgeClass += " outcome-hit";
-            label += "INTERCEPTED AT PREDICTED ATM";
-          } else if (out.outcome_status === "INTERCEPTED_AT_OTHER_ATM") {
-            badgeClass += " outcome-other";
-            label += "INTERCEPTED AT OTHER ATM";
-          } else if (out.outcome_status === "FALSE_ALERT") {
-            badgeClass += " outcome-false";
-            label += "FALSE ALERT";
-          } else if (out.outcome_status === "NO_CASHOUT") {
-            badgeClass += " outcome-false";
-            label += "NO CASHOUT";
-          } else {
-            badgeClass += " outcome-unresolved";
-            label += "UNRESOLVED — SUSPECT EVADED";
-          }
-          outcomeBadge.className = badgeClass;
-          outcomeBadge.innerText = label;
+          outcomeBadge.className = outDetails.badgeClass;
+          outcomeBadge.innerText = "FINAL OUTCOME: " + outDetails.badgeText;
         }
 
         const btnTransition = document.getElementById("btnCaseTransition");
@@ -1691,29 +1734,27 @@ function setupOutcomeModalListeners() {
         }
 
         const heroReportCard = document.getElementById("heroFinalOutcomeRecord");
-        if (heroReportCard) {
+        if (heroReportCard && outDetails) {
           heroReportCard.style.display = "block";
           const repBadge = document.getElementById("reportOutcomeBadge");
-          if (repBadge && outcomeBadge) {
-            repBadge.className = outcomeBadge.className;
-            repBadge.innerText = outcomeBadge.innerText;
+          if (repBadge) {
+            repBadge.className = outDetails.badgeClass;
+            repBadge.innerText = "FINAL OUTCOME: " + outDetails.badgeText;
           }
           const repCaseStatus = document.getElementById("reportCaseStatus");
-          if (repCaseStatus) repCaseStatus.innerText = "RESOLVED / CLOSED";
+          if (repCaseStatus) repCaseStatus.innerText = "CLOSED";
           const repSpatialHit = document.getElementById("reportSpatialHit");
           if (repSpatialHit) {
-            repSpatialHit.innerText = (out.is_spatial_hit || out.outcome_status === "INTERCEPTED_AT_PREDICTED_ATM") 
-              ? "Confirmed Spatial Hit" 
-              : "Adjacent / Non-Target Resolution";
+            repSpatialHit.innerText = outDetails.spatialHitText;
           }
           const repPredAtm = document.getElementById("reportPredictedAtm");
           if (repPredAtm) repPredAtm.innerText = res.predicted_atm_id || "--";
           const repActualAtm = document.getElementById("reportActualAtm");
-          if (repActualAtm) repActualAtm.innerText = out.actual_atm_id || res.predicted_atm_id || "--";
+          if (repActualAtm) repActualAtm.innerText = outDetails.actualAtmText;
           const repUnit = document.getElementById("reportUnit");
           if (repUnit) repUnit.innerText = res._dispatch?.patrol_unit_assigned || "PCR Unit";
           const repTime = document.getElementById("reportTimestamp");
-          if (repTime) repTime.innerText = out.outcome_timestamp || new Date().toISOString().replace("T", " ").substring(0, 19);
+          if (repTime) repTime.innerText = out.recorded_timestamp || out.outcome_timestamp || new Date().toISOString().replace("T", " ").substring(0, 19);
           const repNotes = document.getElementById("reportNotes");
           if (repNotes) repNotes.innerText = out.notes || "No debrief remarks recorded.";
         }
@@ -1880,5 +1921,243 @@ function showToast(message, type = "info") {
     toast.style.transition = "opacity 0.3s ease-out";
     setTimeout(() => toast.remove(), 300);
   }, 3200);
+}
+
+/**
+ * Switch operational workspace console mode (reporting vs investigator).
+ */
+export function applyConsoleMode(role) {
+  setActiveRole(role);
+
+  const btnReporting = document.getElementById("btnRoleReporting");
+  const btnInvestigator = document.getElementById("btnRoleInvestigator");
+  const headerRoleBadge = document.getElementById("headerRoleBadge");
+  const intakeSection = document.getElementById("intakeFormSection");
+  const queueSection = document.getElementById("investigatorQueueSection");
+  const citizenNotice = document.getElementById("citizenTrackingNotice");
+
+  // Tab buttons for investigator-only intel
+  const tabClusters = document.querySelector('.tab-btn[data-tab="tab-clusters"]');
+  const tabConvergences = document.querySelector('.tab-btn[data-tab="tab-convergences"]');
+  const tabPerformance = document.querySelector('.tab-btn[data-tab="tab-performance"]');
+
+  // Operational action buttons in the hero toolbar
+  const btnTransition = document.getElementById("btnCaseTransition");
+  const btnRecordOutcome = document.getElementById("btnRecordOutcome");
+  const btnViewDispatch = document.getElementById("btnViewDispatch");
+  const btnExportEvidence = document.getElementById("btnExportEvidence");
+
+  if (role === "investigator") {
+    if (btnReporting) btnReporting.classList.remove("active");
+    if (btnInvestigator) btnInvestigator.classList.add("active");
+    if (headerRoleBadge) headerRoleBadge.innerText = "Investigator Ops Mode";
+
+    if (queueSection) queueSection.style.display = "block";
+    if (intakeSection) intakeSection.style.display = "block";
+    const intakeTitle = document.getElementById("intakeHeadingTitle");
+    if (intakeTitle) intakeTitle.innerText = "Manual Incident Triage (Intake)";
+
+    if (citizenNotice) citizenNotice.style.display = "none";
+
+    // Show investigator tabs
+    if (tabClusters) tabClusters.style.display = "inline-flex";
+    if (tabConvergences) tabConvergences.style.display = "inline-flex";
+    if (tabPerformance) tabPerformance.style.display = "inline-flex";
+
+    // Populate queue dropdown
+    loadInvestigatorQueue();
+  } else {
+    // Case Reporting / Citizen Console
+    if (btnReporting) btnReporting.classList.add("active");
+    if (btnInvestigator) btnInvestigator.classList.remove("active");
+    if (headerRoleBadge) headerRoleBadge.innerText = "Citizen Reporting Mode";
+
+    if (queueSection) queueSection.style.display = "none";
+    if (intakeSection) intakeSection.style.display = "block";
+    const intakeTitle = document.getElementById("intakeHeadingTitle");
+    if (intakeTitle) intakeTitle.innerText = "Predictive Incident Triage";
+
+    // Hide operational buttons
+    if (btnTransition) btnTransition.style.display = "none";
+    if (btnRecordOutcome) btnRecordOutcome.style.display = "none";
+    if (btnViewDispatch) btnViewDispatch.style.display = "none";
+    if (btnExportEvidence) btnExportEvidence.style.display = "none";
+
+    // Hide investigator-only tabs
+    if (tabClusters) tabClusters.style.display = "none";
+    if (tabConvergences) tabConvergences.style.display = "none";
+    if (tabPerformance) tabPerformance.style.display = "none";
+
+    // If an investigator-only tab was currently active, switch back to tab-analytics
+    const activeTabBtn = document.querySelector(".tab-btn.active");
+    if (activeTabBtn && ["tab-clusters", "tab-convergences", "tab-performance"].includes(activeTabBtn.getAttribute("data-tab"))) {
+      const defaultTabBtn = document.querySelector('.tab-btn[data-tab="tab-analytics"]');
+      if (defaultTabBtn) defaultTabBtn.click();
+    }
+
+    if (citizenNotice && window.currentActivePrediction?.case_id) {
+      citizenNotice.style.display = "flex";
+      const cNum = document.getElementById("citizenTrackingNumber");
+      if (cNum) cNum.innerText = window.currentActivePrediction.case_id;
+    }
+  }
+
+  // Update controls for active prediction if present
+  if (window.currentActivePrediction && window._currentUpdateCaseControls) {
+    window._currentUpdateCaseControls(
+      window.currentActivePrediction.case_id,
+      window.currentActivePrediction.case_status,
+      window.currentActivePrediction._dispatch,
+      window.currentActivePrediction._outcome
+    );
+  }
+}
+
+/**
+ * Loads recent operational cases into the queue select dropdown.
+ */
+async function loadInvestigatorQueue() {
+  const select = document.getElementById("investigatorCaseSelect");
+  if (!select) return;
+  try {
+    const cases = await API.getCases({ limit: 30 });
+    select.innerHTML = '<option value="">-- Select Incoming Case from Queue --</option>';
+    if (cases && cases.length > 0) {
+      cases.forEach((c) => {
+        const opt = document.createElement("option");
+        opt.value = c.case_id;
+        const statusClean = (c.case_status || "NEW_ALERT").replace(/_/g, " ");
+        opt.textContent = `${c.case_id} | ${statusClean} | Target: ${c.predicted_atm_id || "ATM"} (${c.priority_level || "MED"})`;
+        select.appendChild(opt);
+      });
+    } else {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No active cases in queue";
+      select.appendChild(opt);
+    }
+  } catch (err) {
+    console.warn("Could not load case queue:", err);
+  }
+}
+
+/**
+ * Loads an operational case from backend evidence into the active workbench.
+ */
+async function loadCaseById(caseId) {
+  if (!caseId) return;
+  try {
+    showToast(`Loading operational case ${caseId}...`, "info");
+    const evidence = await API.getEvidence(caseId);
+    if (!evidence || !evidence.case) {
+      showToast(`Case ${caseId} not found or has no evidence packet.`, "error");
+      return;
+    }
+
+    const c = evidence.case;
+    const pred = evidence.prediction || {};
+    const topCandidates = (evidence.top_candidates && evidence.top_candidates.length > 0)
+      ? evidence.top_candidates
+      : (pred.top_candidates || []);
+
+    const predObj = {
+      ...pred,
+      case_id: c.case_id,
+      case_status: c.case_status,
+      predicted_atm_id: c.predicted_atm_id || pred.predicted_atm_id,
+      predicted_zone_id: c.predicted_zone_id || pred.predicted_zone_id,
+      priority_score: c.priority_score ?? pred.priority_score ?? 50,
+      priority_level: c.priority_level || pred.priority_level || "MEDIUM",
+      confidence_score: pred.confidence_score ?? 0.15,
+      predicted_window_start: pred.predicted_window_start || c.created_timestamp,
+      predicted_window_end: pred.predicted_window_end || "",
+      predicted_lead_time_mins: pred.predicted_lead_time_mins || 20,
+      risk_level: pred.risk_level || "MODERATE",
+      top_candidates: topCandidates,
+      explanation_codes: pred.explanation_codes || [],
+      priority_reasons: pred.priority_reasons || [],
+      playbook: pred.playbook || {
+        tactical_disposition: "TACTICAL INTERCEPTION",
+        dispatch_brief: evidence.dispatch?.tactical_brief || `[TACTICAL BRIEF] Target ATM: ${c.predicted_atm_id}`,
+        recommended_actions: evidence.dispatch?.playbook_actions || []
+      },
+      _dispatch: evidence.dispatch || null,
+      _outcome: null,
+    };
+
+    try {
+      predObj._outcome = await API.getCaseOutcome(caseId);
+    } catch {}
+
+    if (!predObj._dispatch) {
+      try {
+        predObj._dispatch = await API.getCaseDispatch(caseId);
+      } catch {}
+    }
+
+    renderPredictionResult(predObj);
+    MapController.highlightPrediction(predObj.predicted_atm_id, predObj.top_candidates);
+    showToast(`Loaded operational case ${caseId} (${predObj.case_status})`, "success");
+  } catch (err) {
+    showToast(`Failed to load case ${caseId}: ${err.message}`, "error");
+  }
+}
+
+/**
+ * Setup console switcher tabs and queue listener events.
+ */
+function setupConsoleSwitcher() {
+  const btnReporting = document.getElementById("btnRoleReporting");
+  const btnInvestigator = document.getElementById("btnRoleInvestigator");
+
+  if (btnReporting) {
+    btnReporting.addEventListener("click", () => {
+      applyConsoleMode("reporting");
+      showToast("Switched to Case Reporting / Citizen Console", "info");
+    });
+  }
+
+  if (btnInvestigator) {
+    btnInvestigator.addEventListener("click", () => {
+      applyConsoleMode("investigator");
+      showToast("Switched to Investigator / Operations Console", "info");
+    });
+  }
+
+  // Setup queue controls
+  const select = document.getElementById("investigatorCaseSelect");
+  if (select) {
+    select.addEventListener("change", (e) => {
+      const cid = e.target.value;
+      if (cid) loadCaseById(cid);
+    });
+  }
+
+  const btnManual = document.getElementById("btnManualLoadCase");
+  const inputManual = document.getElementById("manualCaseIdInput");
+  if (btnManual && inputManual) {
+    btnManual.addEventListener("click", () => {
+      const cid = inputManual.value.trim();
+      if (cid) {
+        loadCaseById(cid);
+      } else {
+        showToast("Please enter a valid Case ID", "warning");
+      }
+    });
+    inputManual.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const cid = inputManual.value.trim();
+        if (cid) loadCaseById(cid);
+      }
+    });
+  }
+
+  const btnRefreshQueue = document.getElementById("btnRefreshCaseQueue");
+  if (btnRefreshQueue) {
+    btnRefreshQueue.addEventListener("click", async () => {
+      await loadInvestigatorQueue();
+      showToast("Operational case queue refreshed", "info");
+    });
+  }
 }
 

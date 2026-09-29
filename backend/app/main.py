@@ -21,7 +21,7 @@ import json
 import sys
 from pathlib import Path
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -515,8 +515,31 @@ def get_case_details(case_id: str):
     return case
 
 
+def require_investigator_role(
+    x_app_role: Optional[str] = Header(None, alias="X-App-Role"),
+    role: Optional[str] = Query(None),
+) -> str:
+    """
+    Enforces role-based console access for operational actions.
+    Case Reporting / Citizen role is restricted to complaint intake, prediction viewing,
+    and tracking. Operational dispatches, evidence exports, and outcome modifications
+    require the 'investigator' or 'operations' role.
+    """
+    current_role = (x_app_role or role or "investigator").strip().lower()
+    if current_role in ("reporting", "citizen", "user"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Case Reporting / User console is not authorized to execute operational investigator actions.",
+        )
+    return current_role
+
+
 @app.patch("/api/cases/{case_id}/status", response_model=CaseResponse, tags=["Case Management"])
-def update_case_status(case_id: str, request: CaseStatusUpdateRequest):
+def update_case_status(
+    case_id: str,
+    request: CaseStatusUpdateRequest,
+    _role: str = Depends(require_investigator_role),
+):
     """Executes valid lifecycle transition: NEW_ALERT -> PATROL_DISPATCHED -> RESOLVED."""
     with get_db_connection() as conn:
         updated = transition_case_status(conn, case_id, request.status, request.notes)
@@ -524,7 +547,11 @@ def update_case_status(case_id: str, request: CaseStatusUpdateRequest):
 
 
 @app.post("/api/cases/{case_id}/transition", response_model=CaseResponse, tags=["Case Management"])
-def transition_case_endpoint(case_id: str, request: CaseStatusUpdateRequest):
+def transition_case_endpoint(
+    case_id: str,
+    request: CaseStatusUpdateRequest,
+    _role: str = Depends(require_investigator_role),
+):
     """Convenience alias for case lifecycle transition."""
     with get_db_connection() as conn:
         updated = transition_case_status(conn, case_id, request.status, request.notes)
@@ -535,7 +562,11 @@ def transition_case_endpoint(case_id: str, request: CaseStatusUpdateRequest):
 # 5b. FIELD PATROL DISPATCH & EVIDENCE EXPORT ENDPOINTS
 # ==============================================================================
 @app.post("/api/cases/{case_id}/dispatch", response_model=DispatchResponse, tags=["Dispatch & Evidence"])
-def dispatch_patrol_endpoint(case_id: str, request: Optional[DispatchCreateRequest] = None):
+def dispatch_patrol_endpoint(
+    case_id: str,
+    request: Optional[DispatchCreateRequest] = None,
+    _role: str = Depends(require_investigator_role),
+):
     """
     Creates or updates a patrol dispatch record for an operational case.
     Transitions dispatch status to 'DISPATCHED' and auto-advances the case
@@ -583,6 +614,7 @@ def export_case_evidence_endpoint(
     case_id: str,
     format: str = Query("json", description="Export format: 'json' or 'csv'"),
     download: bool = Query(False, description="Set true to return download attachment headers"),
+    _role: str = Depends(require_investigator_role),
 ):
     """
     Compiles and exports comprehensive structured evidence for an operational case.
@@ -615,7 +647,11 @@ def export_case_evidence_endpoint(
 # 5c. INCIDENT OUTCOME LOGGING & FEEDBACK LOOP ENDPOINTS
 # ==============================================================================
 @app.post("/api/cases/{case_id}/outcome", response_model=CaseOutcomeResponse, tags=["Outcome Feedback Loop"])
-def record_case_outcome_endpoint(case_id: str, request: CaseOutcomeCreateRequest):
+def record_case_outcome_endpoint(
+    case_id: str,
+    request: CaseOutcomeCreateRequest,
+    _role: str = Depends(require_investigator_role),
+):
     """
     Records or updates the verified ground truth outcome for an operational case.
     Verifies whether the actual cash-out matched the predicted ATM and

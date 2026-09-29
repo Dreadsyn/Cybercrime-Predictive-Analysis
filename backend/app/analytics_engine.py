@@ -47,11 +47,12 @@ def get_intervention_performance_analytics(db_conn: sqlite3.Connection) -> Dict[
     cur.execute("SELECT COUNT(*) FROM operational_cases WHERE case_status = 'PATROL_DISPATCHED';")
     patrol_dispatched_cases = cur.fetchone()[0] or 0
 
-    cur.execute("SELECT COUNT(*) FROM operational_cases WHERE case_status = 'RESOLVED';")
+    cur.execute("SELECT COUNT(*) FROM operational_cases WHERE case_status IN ('RESOLVED', 'CLOSED');")
     resolved_cases = cur.fetchone()[0] or 0
 
-    # Total dispatched includes cases currently dispatched or resolved after dispatch
-    dispatched_cases = patrol_dispatched_cases + resolved_cases
+    # Total dispatched includes cases currently dispatched, pending outcome, or resolved/closed after dispatch
+    cur.execute("SELECT COUNT(*) FROM operational_cases WHERE case_status IN ('PATROL_DISPATCHED', 'OUTCOME_PENDING', 'RESOLVED', 'CLOSED');")
+    dispatched_cases = cur.fetchone()[0] or 0
 
     # 2. Outcome Totals & Breakdown
     cur.execute("SELECT COUNT(*) FROM case_outcomes;")
@@ -167,8 +168,8 @@ def get_intervention_performance_analytics(db_conn: sqlite3.Connection) -> Dict[
         SELECT 
             c.predicted_zone_id AS zone_id,
             COUNT(DISTINCT c.case_id) AS total_cases,
-            SUM(CASE WHEN c.case_status IN ('PATROL_DISPATCHED', 'RESOLVED') THEN 1 ELSE 0 END) AS dispatched_cases,
-            SUM(CASE WHEN c.case_status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved_cases,
+            SUM(CASE WHEN c.case_status IN ('PATROL_DISPATCHED', 'OUTCOME_PENDING', 'RESOLVED', 'CLOSED') THEN 1 ELSE 0 END) AS dispatched_cases,
+            SUM(CASE WHEN c.case_status IN ('RESOLVED', 'CLOSED') THEN 1 ELSE 0 END) AS resolved_cases,
             COUNT(DISTINCT o.outcome_id) AS outcomes_logged,
             SUM(CASE WHEN o.is_spatial_hit = 1 THEN 1 ELSE 0 END) AS spatial_hits
         FROM operational_cases c
@@ -201,8 +202,8 @@ def get_intervention_performance_analytics(db_conn: sqlite3.Connection) -> Dict[
             c.predicted_atm_id AS atm_id,
             c.predicted_zone_id AS zone_id,
             COUNT(DISTINCT c.case_id) AS total_cases,
-            SUM(CASE WHEN c.case_status IN ('PATROL_DISPATCHED', 'RESOLVED') THEN 1 ELSE 0 END) AS dispatched_cases,
-            SUM(CASE WHEN c.case_status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved_cases,
+            SUM(CASE WHEN c.case_status IN ('PATROL_DISPATCHED', 'OUTCOME_PENDING', 'RESOLVED', 'CLOSED') THEN 1 ELSE 0 END) AS dispatched_cases,
+            SUM(CASE WHEN c.case_status IN ('RESOLVED', 'CLOSED') THEN 1 ELSE 0 END) AS resolved_cases,
             COUNT(DISTINCT o.outcome_id) AS outcomes_logged,
             SUM(CASE WHEN o.is_spatial_hit = 1 THEN 1 ELSE 0 END) AS spatial_hits
         FROM operational_cases c

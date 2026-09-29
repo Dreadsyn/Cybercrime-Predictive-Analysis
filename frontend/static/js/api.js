@@ -5,13 +5,29 @@
 
 const API_BASE = "/api";
 
+let currentRole = sessionStorage.getItem("app_active_role") || "reporting";
+
+export function setActiveRole(role) {
+  currentRole = role;
+  sessionStorage.setItem("app_active_role", role);
+}
+
+export function getActiveRole() {
+  return sessionStorage.getItem("app_active_role") || currentRole;
+}
+
 async function request(endpoint, options = {}) {
   try {
+    const activeRole = getActiveRole();
+    const headers = {
+      "Content-Type": "application/json",
+      "X-App-Role": activeRole,
+      ...(options.headers || {}),
+    };
+
     const response = await fetch(`${API_BASE}${endpoint}`, {
-      headers: {
-        "Content-Type": "application/json",
-      },
       ...options,
+      headers,
     });
 
     if (!response.ok) {
@@ -141,7 +157,7 @@ export const API = {
   },
 
   getEvidenceDownloadUrl(caseId, format = "json") {
-    return `${API_BASE}/cases/${encodeURIComponent(caseId)}/evidence?format=${encodeURIComponent(format)}&download=true`;
+    return `${API_BASE}/cases/${encodeURIComponent(caseId)}/evidence?format=${encodeURIComponent(format)}&download=true&role=${encodeURIComponent(getActiveRole())}`;
   },
 
   async getEvidence(caseId, format = "json") {

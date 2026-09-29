@@ -105,10 +105,12 @@ def record_or_update_case_outcome(
         if not resolved_actual_atm:
             resolved_actual_atm = predicted_atm
         is_spatial_hit = 1
-    elif resolved_actual_atm and resolved_actual_atm == predicted_atm:
-        is_spatial_hit = 1
+    elif clean_status == "INTERCEPTED_AT_OTHER_ATM":
+        is_spatial_hit = 1 if (resolved_actual_atm and resolved_actual_atm == predicted_atm) else 0
     else:
+        # FALSE_ALERT, NO_CASHOUT, UNRESOLVED can NEVER be a spatial hit
         is_spatial_hit = 0
+        resolved_actual_atm = None
 
     # 3. Guard: Cannot record outcome before patrol dispatch
     dispatch_rec = get_dispatch_by_case_id(db_conn, case_id)
@@ -157,7 +159,7 @@ def record_or_update_case_outcome(
 
     # 6. Advance case lifecycle: resolve to RESOLVED if requested, otherwise advance to OUTCOME_PENDING
     if auto_resolve_case:
-        if case.get("case_status") != "RESOLVED":
+        if case.get("case_status") not in ("RESOLVED", "CLOSED"):
             transition_case_status(
                 db_conn=db_conn,
                 case_id=case_id,

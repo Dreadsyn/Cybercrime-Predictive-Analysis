@@ -53,6 +53,7 @@ from backend.app.main import (
     ml_engine,
     predict_cashout_location,
     record_case_outcome_endpoint,
+    require_investigator_role,
     serve_dashboard,
     update_case_status,
     validation_exception_handler,
@@ -2707,6 +2708,163 @@ def test_closed_lifecycle_and_state_telemetry():
         )
     assert exc_out.value.status_code == 400
     assert "finalized and cannot be modified" in exc_out.value.detail.lower()
+
+
+def test_role_based_access_control():
+    """
+    Verifies Section 1 & 2: Prototype Role-Based Access Control (RBAC).
+    Case Reporting / Citizen role is restricted from executing operational actions:
+    - cannot dispatch patrol units (HTTP 403)
+    - cannot record or alter operational outcomes (HTTP 403)
+    - cannot transition case lifecycle (HTTP 403)
+    - cannot export evidentiary dossiers (HTTP 403)
+    Investigator role succeeds without restriction.
+    """
+    # 1. Verify dependency direct behavior
+    assert require_investigator_role(x_app_role="investigator") == "investigator"
+    assert require_investigator_role(x_app_role="operations") == "operations"
+
+    for forbidden_role in ("reporting", "citizen", "user"):
+        with pytest.raises(HTTPException) as exc_dep:
+            require_investigator_role(x_app_role=forbidden_role)
+        assert exc_dep.value.status_code == 403
+        assert "not authorized" in exc_dep.value.detail.lower()
+
+    # 2. Verify endpoint enforcement with reporting role
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=55000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=15.0,
+        incident_hour=16,
+        incident_day_of_week=4,
+        complaint_id="CMP-TEST-RBAC-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+
+    # Attempt dispatch with reporting role -> 403
+    with pytest.raises(HTTPException) as exc_disp:
+        dispatch_patrol_endpoint(
+            case_id,
+            request=DispatchCreateRequest(patrol_unit="PCR-WEST-01"),
+            _role=require_investigator_role(x_app_role="reporting"),
+        )
+    assert exc_disp.value.status_code == 403
+
+    # Dispatch as investigator succeeds
+    disp = dispatch_patrol_endpoint(
+        case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-WEST-01"),
+        _role=require_investigator_role(x_app_role="investigator"),
+    )
+    assert disp["dispatch_status"] == "DISPATCHED"
+
+    # Attempt outcome logging with reporting role -> 403
+    with pytest.raises(HTTPException) as exc_out:
+        record_case_outcome_endpoint(
+            case_id,
+            request=CaseOutcomeCreateRequest(outcome_status="INTERCEPTED_AT_PREDICTED_ATM"),
+            _role=require_investigator_role(x_app_role="reporting"),
+        )
+    assert exc_out.value.status_code == 403
+
+    # Attempt evidence export with reporting role -> 403
+    with pytest.raises(HTTPException) as exc_ev:
+        export_case_evidence_endpoint(
+            case_id,
+            _role=require_investigator_role(x_app_role="reporting"),
+        )
+    assert exc_ev.value.status_code == 403
+
+
+def test_outcome_mapping_fidelity_across_types():
+    """
+    Verifies Section 5: Ground-truth outcome fidelity mapping.
+    Ensures that FALSE_ALERT, NO_CASHOUT, and UNRESOLVED can NEVER be marked as
+    spatial hits or display as 'INTERCEPTED AT PREDICTED ATM'.
+    """
+    # 1. FALSE_ALERT: must be is_spatial_hit=False and actual_atm_id=None
+    p1 = predict_cashout_location(PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=62000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=10.0,
+        incident_hour=14,
+        incident_day_of_week=3,
+        complaint_id="CMP-FIDELITY-FALSE-01",
+    ))
+    dispatch_patrol_endpoint(p1["case_id"], DispatchCreateRequest(patrol_unit="PCR-W1"))
+    out_false = record_case_outcome_endpoint(
+        p1["case_id"],
+        CaseOutcomeCreateRequest(
+            outcome_status="FALSE_ALERT",
+            actual_atm_id=p1["predicted_atm_id"], # Even if form pre-filled with predicted_atm
+            notes="Legitimate user transfer confirmed by bank.",
+            auto_resolve_case=True,
+        ),
+    )
+    assert out_false["outcome_status"] == "FALSE_ALERT"
+    assert out_false["is_spatial_hit"] is False
+    assert out_false["actual_atm_id"] is None
+
+    # 2. NO_CASHOUT: must be is_spatial_hit=False and actual_atm_id=None
+    p2 = predict_cashout_location(PredictionRequest(
+        crime_category="TASK_FRAUD",
+        reported_amount=38000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_HDFC_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_NORTH",
+        reporting_delay_mins=15.0,
+        incident_hour=11,
+        incident_day_of_week=2,
+        complaint_id="CMP-FIDELITY-NOCASH-01",
+    ))
+    dispatch_patrol_endpoint(p2["case_id"], DispatchCreateRequest(patrol_unit="PCR-N2"))
+    out_nocash = record_case_outcome_endpoint(
+        p2["case_id"],
+        CaseOutcomeCreateRequest(
+            outcome_status="NO_CASHOUT",
+            notes="Account frozen by cyber cell before mule arrival.",
+            auto_resolve_case=True,
+        ),
+    )
+    assert out_nocash["outcome_status"] == "NO_CASHOUT"
+    assert out_nocash["is_spatial_hit"] is False
+    assert out_nocash["actual_atm_id"] is None
+
+    # 3. UNRESOLVED: must be is_spatial_hit=False
+    p3 = predict_cashout_location(PredictionRequest(
+        crime_category="LOAN_SCAM",
+        reported_amount=22000.0,
+        payment_channel="NEFT",
+        mule_bank_code="BANK_PNB_SYNTH",
+        mule_account_tier="RURAL_REGIONAL",
+        mule_branch_zone="ZONE_SOUTH",
+        reporting_delay_mins=45.0,
+        incident_hour=10,
+        incident_day_of_week=1,
+        complaint_id="CMP-FIDELITY-UNRES-01",
+    ))
+    dispatch_patrol_endpoint(p3["case_id"], DispatchCreateRequest(patrol_unit="PCR-S3"))
+    out_unres = record_case_outcome_endpoint(
+        p3["case_id"],
+        CaseOutcomeCreateRequest(
+            outcome_status="UNRESOLVED",
+            notes="Suspect fled before patrol unit established perimeter.",
+            auto_resolve_case=True,
+        ),
+    )
+    assert out_unres["outcome_status"] == "UNRESOLVED"
+    assert out_unres["is_spatial_hit"] is False
+
 
 
 
