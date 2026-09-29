@@ -17,13 +17,14 @@ import uuid
 from fastapi import HTTPException, status
 
 
-VALID_CASE_STATUSES = {"NEW_ALERT", "PATROL_DISPATCHED", "OUTCOME_PENDING", "RESOLVED"}
+VALID_CASE_STATUSES = {"NEW_ALERT", "PATROL_DISPATCHED", "OUTCOME_PENDING", "RESOLVED", "CLOSED"}
 
 VALID_STATUS_TRANSITIONS = {
     "NEW_ALERT": {"PATROL_DISPATCHED"},
-    "PATROL_DISPATCHED": {"OUTCOME_PENDING", "RESOLVED"},
-    "OUTCOME_PENDING": {"RESOLVED"},
+    "PATROL_DISPATCHED": {"OUTCOME_PENDING", "RESOLVED", "CLOSED"},
+    "OUTCOME_PENDING": {"RESOLVED", "CLOSED"},
     "RESOLVED": set(),
+    "CLOSED": set(),
 }
 
 
@@ -35,13 +36,38 @@ def generate_case_id() -> str:
 
 
 def get_case_by_id(db_conn: sqlite3.Connection, case_id: str) -> Optional[Dict[str, Any]]:
-    """Retrieves an operational case record by case_id."""
+    """Retrieves an operational case record by case_id enriched with state machine telemetry."""
     cur = db_conn.cursor()
     cur.execute("SELECT * FROM operational_cases WHERE case_id = ?;", (case_id,))
     row = cur.fetchone()
-    if row:
-        return dict(row)
-    return None
+    if not row:
+        return None
+
+    d = dict(row)
+    # Check dispatch record
+    cur.execute("SELECT dispatch_id, dispatch_status FROM patrol_dispatches WHERE case_id = ?;", (case_id,))
+    disp_row = cur.fetchone()
+    d["is_dispatched"] = bool(disp_row and disp_row[1] == "DISPATCHED")
+    d["dispatch_id"] = disp_row[0] if disp_row else None
+
+    # Check outcome record
+    cur.execute("SELECT outcome_id, outcome_status FROM case_outcomes WHERE case_id = ?;", (case_id,))
+    out_row = cur.fetchone()
+    d["has_outcome"] = bool(out_row)
+    d["outcome_status"] = out_row[1] if out_row else None
+
+    # Determine next valid primary action
+    st = d.get("case_status", "NEW_ALERT")
+    if st == "NEW_ALERT":
+        d["next_valid_action"] = "DISPATCH_PATROL"
+    elif st == "PATROL_DISPATCHED":
+        d["next_valid_action"] = "LOG_OUTCOME"
+    elif st == "OUTCOME_PENDING":
+        d["next_valid_action"] = "RECORD_OUTCOME"
+    else:
+        d["next_valid_action"] = "NONE"
+
+    return d
 
 
 def get_case_by_parent_alert_id(db_conn: sqlite3.Connection, parent_alert_id: str) -> Optional[Dict[str, Any]]:
@@ -199,12 +225,12 @@ def transition_case_status(
             ),
         )
 
-    if target_status == "RESOLVED":
+    if target_status in ("RESOLVED", "CLOSED"):
         cur.execute("SELECT outcome_id FROM case_outcomes WHERE case_id = ?;", (case_id,))
         if not cur.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot resolve case '{case_id}' before an operational outcome is recorded.",
+                detail=f"Cannot close case '{case_id}' before an operational outcome is recorded.",
             )
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

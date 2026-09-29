@@ -535,11 +535,13 @@ function renderPredictionResult(result) {
     if (caseStatusBadge) {
       if (status) {
         let statusLabel = status.replace(/_/g, " ");
-        if (status === "RESOLVED") {
+        let badgeClass = `case-status-badge status-${status.toLowerCase()}`;
+        if (status === "RESOLVED" || status === "CLOSED") {
           statusLabel = "CLOSED";
+          badgeClass = "case-status-badge status-closed";
         }
         caseStatusBadge.innerText = `CASE STATUS: ${statusLabel}`;
-        caseStatusBadge.className = `case-status-badge status-${status.toLowerCase()}`;
+        caseStatusBadge.className = badgeClass;
         caseStatusBadge.style.display = "inline-flex";
       } else {
         caseStatusBadge.style.display = "none";
@@ -554,7 +556,7 @@ function renderPredictionResult(result) {
         dispatchBadge.innerText = `${unitName}: DISPATCHED`;
         dispatchBadge.className = "dispatch-badge status-dispatched";
         dispatchBadge.style.display = "inline-flex";
-      } else if (status === "RESOLVED") {
+      } else if (status === "RESOLVED" || status === "CLOSED") {
         const unitName = currentDisp?.patrol_unit_assigned || "PCR";
         dispatchBadge.innerText = `${unitName}: COMPLETED`;
         dispatchBadge.className = "dispatch-badge status-dispatched";
@@ -572,7 +574,7 @@ function renderPredictionResult(result) {
       } else {
         const st = currentOut.outcome_status;
         let badgeClass = "outcome-badge";
-        let label = "OUTCOME: ";
+        let label = (status === "RESOLVED" || status === "CLOSED") ? "FINAL OUTCOME: " : "OUTCOME: ";
         if (currentOut.is_spatial_hit || st === "INTERCEPTED_AT_PREDICTED_ATM") {
           badgeClass += " outcome-hit";
           label += "INTERCEPTED AT PREDICTED ATM";
@@ -611,7 +613,7 @@ function renderPredictionResult(result) {
     // Final Resolution Report Card in Hero
     const heroReportCard = document.getElementById("heroFinalOutcomeRecord");
     if (heroReportCard) {
-      if (status === "RESOLVED") {
+      if (status === "RESOLVED" || status === "CLOSED") {
         heroReportCard.style.display = "block";
         const repBadge = document.getElementById("reportOutcomeBadge");
         if (repBadge && outcomeBadge) {
@@ -619,7 +621,7 @@ function renderPredictionResult(result) {
           repBadge.innerText = outcomeBadge.innerText;
         }
         const repCaseStatus = document.getElementById("reportCaseStatus");
-        if (repCaseStatus) repCaseStatus.innerText = "RESOLVED / CLOSED";
+        if (repCaseStatus) repCaseStatus.innerText = "CLOSED";
         const repSpatialHit = document.getElementById("reportSpatialHit");
         if (repSpatialHit) {
           repSpatialHit.innerText = (currentOut?.is_spatial_hit || currentOut?.outcome_status === "INTERCEPTED_AT_PREDICTED_ATM") 
@@ -654,7 +656,7 @@ function renderPredictionResult(result) {
       if (btnRecordOutcome) btnRecordOutcome.style.display = "none";
       if (btnViewDispatch) btnViewDispatch.style.display = "none";
     } else if (status === "PATROL_DISPATCHED" || status === "OUTCOME_PENDING") {
-      // 2. PATROL_DISPATCHED / OUTCOME_PENDING: Primary action is "Log Outcome"
+      // 2. PATROL_DISPATCHED / OUTCOME_PENDING: Primary action is "Log Outcome" / "Record Outcome & Close"
       if (btnTransition) {
         btnTransition.style.display = "none";
       }
@@ -662,7 +664,8 @@ function renderPredictionResult(result) {
         btnRecordOutcome.style.display = "inline-flex";
         btnRecordOutcome.disabled = false;
         btnRecordOutcome.className = "btn-op-primary";
-        btnRecordOutcome.innerHTML = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="m9 14 2 2 4-4"/></svg><span id="recordOutcomeText">Log Outcome</span>`;
+        const actionLabel = status === "OUTCOME_PENDING" ? "Record Outcome & Close" : "Log Outcome";
+        btnRecordOutcome.innerHTML = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="m9 14 2 2 4-4"/></svg><span id="recordOutcomeText">${actionLabel}</span>`;
         btnRecordOutcome.title = "Record Actual Incident Outcome";
       }
       if (btnViewDispatch) {
@@ -670,8 +673,8 @@ function renderPredictionResult(result) {
         btnViewDispatch.className = "btn-op-secondary";
         btnViewDispatch.title = "View Field Dispatch Details";
       }
-    } else if (status === "RESOLVED") {
-      // 3. RESOLVED / CLOSED: Terminal state, no mutations allowed
+    } else if (status === "RESOLVED" || status === "CLOSED") {
+      // 3. RESOLVED / CLOSED: Terminal state, read-only
       if (btnTransition) {
         btnTransition.style.display = "none";
       }
@@ -685,14 +688,13 @@ function renderPredictionResult(result) {
         btnViewDispatch.style.display = "inline-flex";
         btnViewDispatch.className = "btn-op-secondary";
         btnViewDispatch.title = "View Field Dispatch Details (Read-Only)";
-      }
     }
   }
 
   updateCaseControls(result.case_id, result.case_status);
 
   // Load existing dispatch if case already has one
-  if (result.case_id && (result.case_status === "PATROL_DISPATCHED" || result.case_status === "OUTCOME_PENDING" || result.case_status === "RESOLVED")) {
+  if (result.case_id && (result.case_status === "PATROL_DISPATCHED" || result.case_status === "OUTCOME_PENDING" || result.case_status === "RESOLVED" || result.case_status === "CLOSED")) {
     API.getCaseDispatch(result.case_id)
       .then(disp => {
         if (disp) updateCaseControls(result.case_id, result.case_status, disp, null);
@@ -1523,7 +1525,7 @@ async function openOutcomeModal(result) {
   const modalTitle = document.getElementById("outcomeModalTitle");
 
   if (isFinalized) {
-    if (modalTitle) modalTitle.innerText = "Incident Resolution Record";
+    if (modalTitle) modalTitle.innerText = "Final Incident Resolution Record (Read-Only)";
     if (formMode) formMode.style.display = "none";
     if (reportMode) {
       reportMode.style.display = "block";
@@ -1532,7 +1534,7 @@ async function openOutcomeModal(result) {
       if (repBadge && currentOut) {
         const st = currentOut.outcome_status;
         let bCls = "outcome-badge";
-        let bTxt = "OUTCOME: ";
+        let bTxt = "FINAL OUTCOME: ";
         if (currentOut.is_spatial_hit || st === "INTERCEPTED_AT_PREDICTED_ATM") {
           bCls += " outcome-hit";
           bTxt += "INTERCEPTED AT PREDICTED ATM";
@@ -1547,13 +1549,13 @@ async function openOutcomeModal(result) {
           bTxt += "NO CASHOUT";
         } else {
           bCls += " outcome-unresolved";
-          bTxt += "UNRESOLVED";
+          bTxt += "UNRESOLVED — SUSPECT EVADED";
         }
         repBadge.className = bCls;
         repBadge.innerText = bTxt;
       }
       const repCaseStatus = document.getElementById("modalReportCaseStatus");
-      if (repCaseStatus) repCaseStatus.innerText = "RESOLVED / CLOSED";
+      if (repCaseStatus) repCaseStatus.innerText = "CLOSED";
       const repHit = document.getElementById("modalReportSpatialHit");
       if (repHit) {
         repHit.innerText = (currentOut?.is_spatial_hit || currentOut?.outcome_status === "INTERCEPTED_AT_PREDICTED_ATM")
@@ -1581,7 +1583,7 @@ async function openOutcomeModal(result) {
     notesInput.disabled = false;
     confirmBtn.style.display = "inline-flex";
     confirmBtn.disabled = false;
-    confirmBtn.innerText = "Record Outcome & Resolve";
+    confirmBtn.innerText = "Record Outcome & Close";
   }
 
   modal.style.display = "flex";
@@ -1643,13 +1645,13 @@ function setupOutcomeModalListeners() {
         const caseStatusBadge = document.getElementById("predCaseStatusBadge");
         if (caseStatusBadge) {
           caseStatusBadge.innerText = "CASE STATUS: CLOSED";
-          caseStatusBadge.className = "case-status-badge status-resolved";
+          caseStatusBadge.className = "case-status-badge status-closed";
         }
         const outcomeBadge = document.getElementById("predOutcomeBadge");
         if (outcomeBadge) {
           outcomeBadge.style.display = "inline-flex";
           let badgeClass = "outcome-badge";
-          let label = "OUTCOME: ";
+          let label = "FINAL OUTCOME: ";
           if (out.is_spatial_hit || out.outcome_status === "INTERCEPTED_AT_PREDICTED_ATM") {
             badgeClass += " outcome-hit";
             label += "INTERCEPTED AT PREDICTED ATM";

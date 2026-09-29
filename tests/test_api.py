@@ -2631,6 +2631,84 @@ def test_spatial_hit_and_unresolved_terminal_outcomes():
     assert get_case_details(p2["case_id"])["case_status"] == "RESOLVED"
 
 
+def test_closed_lifecycle_and_state_telemetry():
+    """
+    Verifies that CLOSED is a valid terminal state, cannot be dispatched after closure,
+    and returns proper telemetry (is_dispatched, has_outcome, next_valid_action='NONE').
+    """
+    req = PredictionRequest(
+        crime_category="TASK_FRAUD",
+        reported_amount=55000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_CENTRAL",
+        reporting_delay_mins=18.0,
+        incident_hour=11,
+        incident_day_of_week=1,
+        complaint_id="CMP-TEST-CLOSED-STATE-01",
+    )
+    p = predict_cashout_location(req)
+    case_id = p["case_id"]
+
+    # Verify NEW_ALERT telemetry
+    case_before = get_case_details(case_id)
+    assert case_before["case_status"] == "NEW_ALERT"
+    assert case_before["is_dispatched"] is False
+    assert case_before["has_outcome"] is False
+    assert case_before["next_valid_action"] == "DISPATCH_PATROL"
+
+    # Dispatch
+    dispatch_patrol_endpoint(case_id, DispatchCreateRequest(patrol_unit="PCR-CENTRAL-09"))
+    case_disp = get_case_details(case_id)
+    assert case_disp["case_status"] == "PATROL_DISPATCHED"
+    assert case_disp["is_dispatched"] is True
+    assert case_disp["has_outcome"] is False
+    assert case_disp["next_valid_action"] == "LOG_OUTCOME"
+
+    # Record outcome without auto resolve -> advances to OUTCOME_PENDING
+    record_case_outcome_endpoint(
+        case_id,
+        CaseOutcomeCreateRequest(
+            outcome_status="INTERCEPTED_AT_OTHER_ATM",
+            actual_atm_id=p["predicted_atm_id"],
+            notes="Intercepted at adjacent kiosk",
+            auto_resolve_case=False,
+        ),
+    )
+    case_pending = get_case_details(case_id)
+    assert case_pending["case_status"] == "OUTCOME_PENDING"
+    assert case_pending["is_dispatched"] is True
+    assert case_pending["has_outcome"] is True
+    assert case_pending["next_valid_action"] == "RECORD_OUTCOME"
+
+    # Transition to CLOSED
+    update_case_status(case_id, CaseStatusUpdateRequest(status="CLOSED", notes="Case concluded and closed."))
+    case_closed = get_case_details(case_id)
+    assert case_closed["case_status"] == "CLOSED"
+    assert case_closed["is_dispatched"] is True
+    assert case_closed["has_outcome"] is True
+    assert case_closed["next_valid_action"] == "NONE"
+
+    # Verify cannot dispatch after CLOSED
+    with pytest.raises(HTTPException) as exc_disp:
+        dispatch_patrol_endpoint(case_id, DispatchCreateRequest(patrol_unit="PCR-CENTRAL-10"))
+    assert exc_disp.value.status_code == 400
+    assert "already been dispatched" in exc_disp.value.detail.lower() or "cannot dispatch twice" in exc_disp.value.detail.lower()
+
+    # Verify cannot modify outcome after CLOSED
+    with pytest.raises(HTTPException) as exc_out:
+        record_case_outcome_endpoint(
+            case_id,
+            CaseOutcomeCreateRequest(
+                outcome_status="FALSE_ALERT",
+                notes="Post-closure edit attempt",
+            ),
+        )
+    assert exc_out.value.status_code == 400
+    assert "finalized and cannot be modified" in exc_out.value.detail.lower()
+
+
 
 
 

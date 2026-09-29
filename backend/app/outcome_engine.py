@@ -121,7 +121,7 @@ def record_or_update_case_outcome(
 
     # 4. Guard: Final outcome cannot be modified after recording
     existing = get_outcome_by_case_id(db_conn, case_id)
-    if existing or case.get("case_status") == "RESOLVED":
+    if existing or case.get("case_status") in ("RESOLVED", "CLOSED"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Outcome for case '{case_id}' is finalized and cannot be modified.",

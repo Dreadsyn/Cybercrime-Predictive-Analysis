@@ -298,10 +298,15 @@ class CaseResponse(BaseModel):
     created_timestamp: str
     updated_timestamp: str
     notes: Optional[str] = ""
+    is_dispatched: Optional[bool] = False
+    dispatch_id: Optional[str] = None
+    has_outcome: Optional[bool] = False
+    outcome_status: Optional[str] = None
+    next_valid_action: Optional[str] = "DISPATCH_PATROL"
 
 
 class CaseStatusUpdateRequest(BaseModel):
-    status: str = Field(..., description="Target operational case lifecycle status: PATROL_DISPATCHED or RESOLVED")
+    status: str = Field(..., description="Target operational case lifecycle status: PATROL_DISPATCHED, OUTCOME_PENDING, RESOLVED, or CLOSED")
     notes: Optional[str] = Field(default="", description="Operational dispatcher remarks or patrol unit logs")
 
 

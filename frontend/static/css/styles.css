@@ -573,26 +573,6 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
-/* Operational Action Toolbar */
-.hero-operational-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--bg-card-subtle);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.toolbar-primary-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
 
 .btn-action-outcome {
   background: #f0fdf4;
@@ -1030,7 +1010,8 @@ body {
   border: 1px solid #fde047;
 }
 
-.case-status-badge.status-resolved {
+.case-status-badge.status-resolved,
+.case-status-badge.status-closed {
   background: #f0fdf4;
   color: #15803d;
   border: 1px solid #bbf7d0;
