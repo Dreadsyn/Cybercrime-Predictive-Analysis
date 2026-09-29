@@ -302,12 +302,12 @@ def list_operational_cases(
     lim = limit if isinstance(limit, int) else 25
     if case_status and isinstance(case_status, str) and case_status.strip().upper() in VALID_CASE_STATUSES:
         cur.execute(
-            "SELECT * FROM operational_cases WHERE case_status = ? ORDER BY updated_timestamp DESC LIMIT ?;",
+            "SELECT * FROM operational_cases WHERE case_status = ? ORDER BY created_timestamp DESC, updated_timestamp DESC, rowid DESC LIMIT ?;",
             (case_status.strip().upper(), lim),
         )
     else:
         cur.execute(
-            "SELECT * FROM operational_cases ORDER BY updated_timestamp DESC LIMIT ?;",
+            "SELECT * FROM operational_cases ORDER BY created_timestamp DESC, updated_timestamp DESC, rowid DESC LIMIT ?;",
             (lim,),
         )
     rows = cur.fetchall()

@@ -2989,6 +2989,134 @@ def test_console_role_separation_and_polling_fidelity():
     assert "finalized and cannot be modified" in exc_im.value.detail.lower()
 
 
+def test_operational_queue_sorting_new_cases_first():
+    """
+    Verifies that list_cases sorts cases by created_timestamp DESC,
+    ensuring newly filed complaints appear at the top of the investigator queue.
+    """
+    import time
+    req1 = PredictionRequest(
+        crime_category="PHISHING_UPI",
+        reported_amount=15000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_HDFC_SYNTH",
+        mule_account_tier="STANDARD",
+        mule_branch_zone="ZONE_NORTH",
+        reporting_delay_mins=20.0,
+        incident_hour=10,
+        incident_day_of_week=2,
+        complaint_id="CMP-SORT-01",
+    )
+    p1 = predict_cashout_location(req1)
+    case_id_1 = p1["case_id"]
+
+    time.sleep(1.05)
+
+    req2 = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=75000.0,
+        payment_channel="IMPS",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_SOUTH",
+        reporting_delay_mins=10.0,
+        incident_hour=14,
+        incident_day_of_week=3,
+        complaint_id="CMP-SORT-02",
+    )
+    p2 = predict_cashout_location(req2)
+    case_id_2 = p2["case_id"]
+
+    inv_queue = list_cases(
+        status=None,
+        limit=50,
+        _role=require_investigator_role(x_app_role="investigator"),
+    )
+    case_ids = [c["case_id"] for c in inv_queue]
+    assert case_id_2 in case_ids
+    assert case_id_1 in case_ids
+    idx2 = case_ids.index(case_id_2)
+    idx1 = case_ids.index(case_id_1)
+    assert idx2 < idx1
+
+
+def test_all_five_outcome_types_recording_and_spatial_hit_flags():
+    """
+    Verifies outcome reporting for all five supported outcome types:
+    1. INTERCEPTED_AT_PREDICTED_ATM -> is_spatial_hit == True
+    2. INTERCEPTED_AT_OTHER_ATM -> is_spatial_hit == False
+    3. NO_CASHOUT -> is_spatial_hit == False
+    4. FALSE_ALERT -> is_spatial_hit == False
+    5. UNRESOLVED -> is_spatial_hit == False
+    All outcome types transition case to RESOLVED and set terminal status.
+    """
+    from backend.app.alert_engine import process_alert_lifecycle
+    from backend.app.case_engine import create_or_link_case
+
+    outcomes_to_test = [
+        ("INTERCEPTED_AT_PREDICTED_ATM", True),
+        ("INTERCEPTED_AT_OTHER_ATM", False),
+        ("NO_CASHOUT", False),
+        ("FALSE_ALERT", False),
+        ("UNRESOLVED", False),
+    ]
+
+    test_atms = [
+        ("ATM-CE-001", "ZONE_CENTRAL"),
+        ("ATM-CE-002", "ZONE_CENTRAL"),
+        ("ATM-CE-003", "ZONE_CENTRAL"),
+        ("ATM-CE-004", "ZONE_CENTRAL"),
+        ("ATM-CE-005", "ZONE_CENTRAL"),
+    ]
+
+    for i, (outcome_type, expected_hit) in enumerate(outcomes_to_test):
+        atm_id, zone_id = test_atms[i]
+        with get_db_connection() as conn:
+            alert = process_alert_lifecycle(
+                db_conn=conn,
+                prediction_candidate={
+                    "complaint_id": f"CMP-OUTCOME-{outcome_type}-{i}",
+                    "predicted_atm_id": atm_id,
+                    "predicted_zone_id": zone_id,
+                    "confidence_score": 0.50,
+                    "top_candidates": [],
+                    "predicted_window_start": f"2026-08-0{i+1} 10:00:00",
+                    "predicted_window_end": f"2026-08-0{i+1} 11:00:00",
+                    "risk_level": "HIGH",
+                    "explanation_codes": [],
+                    "priority_score": 80,
+                    "priority_level": "HIGH",
+                    "priority_reasons": ["High risk amount"],
+                    "playbook": None,
+                    "reference_timestamp": f"2026-08-0{i+1} 10:00:00",
+                },
+                window_hours=24,
+            )
+            cid, _ = create_or_link_case(conn, alert)
+
+        dispatch_patrol_endpoint(
+            cid,
+            request=DispatchCreateRequest(patrol_unit="PCR-TEST"),
+            _role=require_investigator_role(x_app_role="investigator"),
+        )
+
+        out_res = record_case_outcome_endpoint(
+            cid,
+            request=CaseOutcomeCreateRequest(
+                outcome_status=outcome_type,
+                notes=f"Test outcome for {outcome_type}",
+                auto_resolve_case=True,
+            ),
+            _role=require_investigator_role(x_app_role="investigator"),
+        )
+        assert out_res["outcome_status"] == outcome_type
+        assert out_res["is_spatial_hit"] is expected_hit
+
+        case_data = get_case_details(cid)
+        assert case_data["case_status"] in ("RESOLVED", "CLOSED")
+
+
+
 
 
 

@@ -416,48 +416,204 @@ export function getOutcomeDetails(outcome, defaultPredictedAtm = "--") {
   if (status === "INTERCEPTED_AT_PREDICTED_ATM") {
     return {
       status,
+      title: "Intercepted at Predicted ATM",
       badgeText: "INTERCEPTED AT PREDICTED ATM",
       badgeClass: "outcome-badge outcome-hit",
       spatialHitText: "Confirmed Spatial Hit",
       actualAtmText: outcome.actual_atm_id || defaultPredictedAtm,
+      explanation: "Law enforcement field patrol intercepted suspect at calibrated target ATM location.",
+      citizenExplanation: "Law enforcement field patrol successfully secured the target ATM corridor and intercepted unauthorized activity. Incident resolved.",
       isHit: true,
     };
   } else if (status === "INTERCEPTED_AT_OTHER_ATM") {
     return {
       status,
+      title: "Intercepted at Other ATM",
       badgeText: "INTERCEPTED AT OTHER ATM",
       badgeClass: "outcome-badge outcome-other",
       spatialHitText: "Corridor / Adjacent Interception",
       actualAtmText: outcome.actual_atm_id || "--",
-      isHit: false,
-    };
-  } else if (status === "FALSE_ALERT") {
-    return {
-      status,
-      badgeText: "FALSE ALERT / BENIGN ACTIVITY",
-      badgeClass: "outcome-badge outcome-false",
-      spatialHitText: "Non-Fraud / Benign",
-      actualAtmText: outcome.actual_atm_id || "N/A (Benign Activity)",
+      explanation: "Suspect was intercepted at an alternate cash-out location along the transit corridor.",
+      citizenExplanation: "Law enforcement intercepted unauthorized activity at an adjacent facility along the transit corridor. Incident resolved.",
       isHit: false,
     };
   } else if (status === "NO_CASHOUT") {
     return {
       status,
-      badgeText: "NO CASHOUT ATTEMPTED",
+      title: "No Cash-Out Confirmed",
+      badgeText: "NO CASH-OUT CONFIRMED",
       badgeClass: "outcome-badge outcome-false",
       spatialHitText: "No Attempt Detected",
       actualAtmText: outcome.actual_atm_id || "N/A (No Cashout)",
+      explanation: "Patrol confirmed no physical cash withdrawal was attempted. Target account successfully restrained.",
+      citizenExplanation: "Mule financial account successfully restrained; patrol confirmed zero unauthorized cash withdrawal occurred. Incident closed.",
+      isHit: false,
+    };
+  } else if (status === "FALSE_ALERT") {
+    return {
+      status,
+      title: "False Alert / Benign Activity",
+      badgeText: "FALSE ALERT / BENIGN ACTIVITY",
+      badgeClass: "outcome-badge outcome-false",
+      spatialHitText: "Non-Fraud / Benign",
+      actualAtmText: outcome.actual_atm_id || "N/A (Benign Activity)",
+      explanation: "Investigation verified the transaction was benign or legitimate user activity.",
+      citizenExplanation: "Investigation verified the reported activity as benign or legitimate transaction. Incident closed without adverse action.",
       isHit: false,
     };
   } else {
     return {
       status: status || "UNRESOLVED",
-      badgeText: "UNRESOLVED / SUSPECT EVADED",
+      title: "Unresolved",
+      badgeText: "UNRESOLVED",
       badgeClass: "outcome-badge outcome-unresolved",
-      spatialHitText: "Suspect Evaded Perimeter",
+      spatialHitText: "Unresolved Intervention",
       actualAtmText: outcome.actual_atm_id || "Unknown / Unresolved",
+      explanation: "Perimeter established but suspect was not intercepted or transaction could not be verified.",
+      citizenExplanation: "Patrol unit established perimeter; no further unauthorized activity detected. Investigation closed.",
       isHit: false,
     };
+  }
+}
+
+/**
+ * Renders the Final Resolution / Case Outcome section for closed cases.
+ * Completely replaces the active playbook area on both consoles.
+ */
+function renderFinalResolutionSection(result, role) {
+  const resolutionSec = document.getElementById("caseFinalResolutionSection");
+  if (!resolutionSec) return;
+  resolutionSec.style.display = "block";
+
+  const outcomeData = result._outcome || { outcome_status: "UNRESOLVED", notes: "Case resolution finalized." };
+  const outDetails = getOutcomeDetails(outcomeData, result.predicted_atm_id);
+  if (!outDetails) {
+    resolutionSec.style.display = "none";
+    return;
+  }
+
+  const dispUnit = result._dispatch?.patrol_unit_assigned || "PCR Unit";
+  const notes = outcomeData.notes || "No debrief remarks recorded.";
+  const resTimestamp = outcomeData.recorded_timestamp || outcomeData.outcome_timestamp || new Date().toISOString().replace("T", " ").substring(0, 19);
+
+  if (role === "reporting") {
+    // Reporting / Citizen Console: simple read-only final outcome
+    resolutionSec.innerHTML = `
+      <div class="resolution-container citizen-view">
+        <div class="resolution-header">
+          <div class="resolution-title-group">
+            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: #10b981;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+            <span class="resolution-title">Official Case Resolution</span>
+          </div>
+          <span class="${outDetails.badgeClass}">${escapeHtml(outDetails.title)}</span>
+        </div>
+        <div class="resolution-explanation-banner">
+          ${escapeHtml(outDetails.citizenExplanation)}
+        </div>
+        <div class="resolution-details-grid">
+          <div class="res-cell">
+            <span class="res-label">Case Status</span>
+            <span class="res-value" style="color: #10b981; font-weight: 800;">CLOSED</span>
+          </div>
+          <div class="res-cell">
+            <span class="res-label">Target ATM</span>
+            <span class="res-value font-mono">${escapeHtml(result.predicted_atm_id || '--')}</span>
+          </div>
+          <div class="res-cell">
+            <span class="res-label">Target Sector</span>
+            <span class="res-value">${escapeHtml((result.predicted_zone_id || '').replace('ZONE_', 'Zone '))}</span>
+          </div>
+          <div class="res-cell">
+            <span class="res-label">Law Enforcement Unit</span>
+            <span class="res-value font-mono">${escapeHtml(dispUnit)}</span>
+          </div>
+          <div class="res-cell">
+            <span class="res-label">Resolution Timestamp</span>
+            <span class="res-value font-mono">${escapeHtml(resTimestamp)}</span>
+          </div>
+          <div class="res-cell">
+            <span class="res-label">Outcome Verification</span>
+            <span class="res-value">${escapeHtml(outDetails.spatialHitText)}</span>
+          </div>
+        </div>
+        <div class="resolution-footer-note">
+          Law enforcement response concluded for Case ID: <b class="font-mono">${escapeHtml(result.case_id)}</b>. No further citizen action required.
+        </div>
+      </div>
+    `;
+  } else {
+    // Investigator Console: Richer Final Resolution Audit Report
+    const actions = (result.playbook && Array.isArray(result.playbook.actions)) ? result.playbook.actions : [
+      { step: 1, title: "Patrol Unit Deployment", target: result.predicted_atm_id || "ATM" },
+      { step: 2, title: "Transit Corridor Perimeter", target: result.predicted_zone_id || "Zone" },
+      { step: 3, title: "Bank Nodal Liaison Lien", target: "Beneficiary Mule Account" },
+      { step: 4, title: "Physical CCTV & Witness Evidence", target: "Facility Security Desk" }
+    ];
+
+    const auditActionsHtml = actions.map(a => `
+      <div class="audit-action-item">
+        <span><b>Step ${a.step}:</b> ${escapeHtml(a.title)} &bull; <span class="font-mono text-muted">${escapeHtml(a.target)}</span></span>
+        <span class="priority-tag priority-low" style="font-size: 0.6rem;">EXECUTED</span>
+      </div>
+    `).join("");
+
+    resolutionSec.innerHTML = `
+      <div class="resolution-container investigator-view">
+        <div class="resolution-header">
+          <div class="resolution-title-group">
+            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span class="resolution-title">Final Operational Resolution &amp; Audit Report</span>
+            <span class="audit-lock-badge">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Finalized &amp; Locked
+            </span>
+          </div>
+          <span class="${outDetails.badgeClass}">${escapeHtml(outDetails.title)}</span>
+        </div>
+        <div class="resolution-explanation-banner">
+          ${escapeHtml(outDetails.explanation)}
+        </div>
+        <div class="resolution-details-grid">
+          <div class="res-cell">
+            <span class="res-label">Case Status</span>
+            <span class="res-value" style="color: var(--accent-teal); font-weight: 800;">CLOSED</span>
+          </div>
+          <div class="res-cell">
+            <span class="res-label">Prediction Verification</span>
+            <span class="res-value font-bold">${escapeHtml(outDetails.spatialHitText)}</span>
+          </div>
+          <div class="res-cell">
+            <span class="res-label">Predicted ATM</span>
+            <span class="res-value font-mono">${escapeHtml(result.predicted_atm_id || '--')}</span>
+          </div>
+          <div class="res-cell">
+            <span class="res-label">Actual Cashout ATM</span>
+            <span class="res-value font-mono">${escapeHtml(outDetails.actualAtmText)}</span>
+          </div>
+          <div class="res-cell">
+            <span class="res-label">Dispatched Unit</span>
+            <span class="res-value font-mono">${escapeHtml(dispUnit)}</span>
+          </div>
+          <div class="res-cell">
+            <span class="res-label">Resolution Timestamp</span>
+            <span class="res-value font-mono">${escapeHtml(resTimestamp)}</span>
+          </div>
+        </div>
+        <div class="resolution-remarks-box">
+          <div class="res-remarks-label">Investigator Debrief Remarks:</div>
+          <div class="res-remarks-text">${escapeHtml(notes)}</div>
+        </div>
+        <details class="resolution-audit-accordion">
+          <summary class="audit-summary">
+            <span>Historical Tactical SOP Audit Trail</span>
+            <span class="audit-count-hint">View executed SOP actions prior to closure &#9662;</span>
+          </summary>
+          <div class="audit-history-list">
+            ${auditActionsHtml}
+          </div>
+        </details>
+      </div>
+    `;
   }
 }
 
@@ -465,9 +621,21 @@ export function getOutcomeDetails(outcome, defaultPredictedAtm = "--") {
  * Renders the role-appropriate playbook:
  * - Case Reporting / Citizen Console: "What You Should Do Now" victim safety guidance.
  * - Investigator Console: Law Enforcement Tactical SOP actions (PCR dispatch, cordon, nodal bank freeze).
+ * - Closed Cases: Completely removes active playbook and displays Final Resolution section.
  */
 function renderRolePlaybook(result, role) {
   const playbookCard = document.getElementById("playbookCard");
+  const resolutionSec = document.getElementById("caseFinalResolutionSection");
+
+  const isClosed = (result.case_status === "RESOLVED" || result.case_status === "CLOSED");
+  if (isClosed) {
+    if (playbookCard) playbookCard.style.display = "none";
+    renderFinalResolutionSection(result, role);
+    return;
+  }
+
+  if (resolutionSec) resolutionSec.style.display = "none";
+  if (!playbookCard) return;
   const playbookTag = document.getElementById("playbookTag");
   const playbookTitle = document.getElementById("playbookTitle");
   const playbookBadge = document.getElementById("playbookDispositionBadge");
@@ -762,10 +930,13 @@ function renderPredictionResult(result) {
   function updateCaseControls(caseId, status, dispatchInfo = null, outcomeInfo = null) {
     if (dispatchInfo) result._dispatch = dispatchInfo;
     if (outcomeInfo) result._outcome = outcomeInfo;
+    if (status) result.case_status = status;
     const currentDisp = dispatchInfo || result._dispatch || null;
     const currentOut = outcomeInfo || result._outcome || null;
     const role = getActiveRole();
     const citizenNotice = document.getElementById("citizenTrackingNotice");
+
+    renderRolePlaybook(result, role);
 
     if (caseIdBadge) {
       if (caseId) {
@@ -838,35 +1009,10 @@ function renderPredictionResult(result) {
       }
     }
 
-    // Final Resolution Report Card in Hero
+    // Final Resolution Report Card in Hero: Keep hidden so #caseFinalResolutionSection cleanly replaces the active playbook
     const heroReportCard = document.getElementById("heroFinalOutcomeRecord");
     if (heroReportCard) {
-      if ((status === "RESOLVED" || status === "CLOSED") && outDetails) {
-        heroReportCard.style.display = "block";
-        const repBadge = document.getElementById("reportOutcomeBadge");
-        if (repBadge) {
-          repBadge.className = outDetails.badgeClass;
-          repBadge.innerText = "FINAL OUTCOME: " + outDetails.badgeText;
-        }
-        const repCaseStatus = document.getElementById("reportCaseStatus");
-        if (repCaseStatus) repCaseStatus.innerText = "CLOSED";
-        const repSpatialHit = document.getElementById("reportSpatialHit");
-        if (repSpatialHit) {
-          repSpatialHit.innerText = outDetails.spatialHitText;
-        }
-        const repPredAtm = document.getElementById("reportPredictedAtm");
-        if (repPredAtm) repPredAtm.innerText = result.predicted_atm_id || "--";
-        const repActualAtm = document.getElementById("reportActualAtm");
-        if (repActualAtm) repActualAtm.innerText = outDetails.actualAtmText;
-        const repUnit = document.getElementById("reportUnit");
-        if (repUnit) repUnit.innerText = currentDisp?.patrol_unit_assigned || "PCR Unit";
-        const repTime = document.getElementById("reportTimestamp");
-        if (repTime) repTime.innerText = currentOut?.outcome_timestamp || new Date().toISOString().replace("T", " ").substring(0, 19);
-        const repNotes = document.getElementById("reportNotes");
-        if (repNotes) repNotes.innerText = currentOut?.notes || "No debrief remarks recorded.";
-      } else {
-        heroReportCard.style.display = "none";
-      }
+      heroReportCard.style.display = "none";
     }
 
     // Role-specific operational button enforcement
@@ -1060,7 +1206,12 @@ function renderPredictionResult(result) {
   // Hero Immediate Action Directive
   const heroActionEl = document.getElementById("heroActionDirective");
   if (heroActionEl) {
-    if (getActiveRole() === "reporting") {
+    const isClosed = (result.case_status === "RESOLVED" || result.case_status === "CLOSED");
+    if (isClosed) {
+      heroActionEl.innerText = (getActiveRole() === "reporting")
+        ? "Case resolution finalized by law enforcement. View official case outcome details below."
+        : "Operational response concluded. Outcome recorded and case closed. Review resolution audit report below.";
+    } else if (getActiveRole() === "reporting") {
       heroActionEl.innerText = "Citizen Advisory: Follow emergency guidance below. Call National Cyber Helpline 1930 and request an immediate transaction lien with your bank.";
     } else if (result.playbook && result.playbook.summary) {
       heroActionEl.innerText = result.playbook.summary;
@@ -1881,30 +2032,12 @@ function setupOutcomeModalListeners() {
         }
 
         const heroReportCard = document.getElementById("heroFinalOutcomeRecord");
-        if (heroReportCard && outDetails) {
-          heroReportCard.style.display = "block";
-          const repBadge = document.getElementById("reportOutcomeBadge");
-          if (repBadge) {
-            repBadge.className = outDetails.badgeClass;
-            repBadge.innerText = "FINAL OUTCOME: " + outDetails.badgeText;
-          }
-          const repCaseStatus = document.getElementById("reportCaseStatus");
-          if (repCaseStatus) repCaseStatus.innerText = "CLOSED";
-          const repSpatialHit = document.getElementById("reportSpatialHit");
-          if (repSpatialHit) {
-            repSpatialHit.innerText = outDetails.spatialHitText;
-          }
-          const repPredAtm = document.getElementById("reportPredictedAtm");
-          if (repPredAtm) repPredAtm.innerText = res.predicted_atm_id || "--";
-          const repActualAtm = document.getElementById("reportActualAtm");
-          if (repActualAtm) repActualAtm.innerText = outDetails.actualAtmText;
-          const repUnit = document.getElementById("reportUnit");
-          if (repUnit) repUnit.innerText = res._dispatch?.patrol_unit_assigned || "PCR Unit";
-          const repTime = document.getElementById("reportTimestamp");
-          if (repTime) repTime.innerText = out.recorded_timestamp || out.outcome_timestamp || new Date().toISOString().replace("T", " ").substring(0, 19);
-          const repNotes = document.getElementById("reportNotes");
-          if (repNotes) repNotes.innerText = out.notes || "No debrief remarks recorded.";
+        if (heroReportCard) {
+          heroReportCard.style.display = "none";
         }
+
+        // Render role-appropriate final resolution section replacing active playbook
+        renderRolePlaybook(res, getActiveRole());
 
         await loadAlertHistory();
         loadInterventionPerformance();
@@ -2075,6 +2208,8 @@ function showToast(message, type = "info") {
  */
 let _citizenPollInterval = null;
 let _investigatorPollInterval = null;
+let _knownInvestigatorCaseIds = null;
+let _currentCachedCases = [];
 
 function stopAllPolling() {
   if (_citizenPollInterval) {
@@ -2088,7 +2223,149 @@ function stopAllPolling() {
 }
 
 /**
- * Live polling for Investigator Console to detect newly reported cases.
+ * Reviewed cases tracking in localStorage to preserve unread status across page refreshes.
+ */
+function getReviewedCases() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem("investigator_reviewed_cases") || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function markCaseReviewed(caseId) {
+  if (!caseId) return;
+  try {
+    const set = getReviewedCases();
+    if (!set.has(caseId)) {
+      set.add(caseId);
+      localStorage.setItem("investigator_reviewed_cases", JSON.stringify([...set]));
+    }
+    updateQueueDropdownUI();
+  } catch (e) {
+    console.warn("Could not save reviewed case:", e);
+  }
+}
+
+/**
+ * Updates the Investigator Case Queue dropdown options with [NEW] vs [REVIEWED] tags
+ * and synchronizes the unread counter badge.
+ */
+function updateQueueDropdownUI() {
+  const select = document.getElementById("investigatorCaseSelect");
+  const countBadge = document.getElementById("queueNewCountBadge");
+  if (!select) return;
+
+  const reviewedSet = getReviewedCases();
+  const currentVal = select.value;
+
+  select.innerHTML = '<option value="">-- Select Incoming Case from Queue --</option>';
+
+  let unreadCount = 0;
+  if (_currentCachedCases && _currentCachedCases.length > 0) {
+    _currentCachedCases.forEach((c) => {
+      const isReviewed = reviewedSet.has(c.case_id);
+      if (!isReviewed) unreadCount++;
+
+      const opt = document.createElement("option");
+      opt.value = c.case_id;
+      const statusClean = (c.case_status || "NEW_ALERT").replace(/_/g, " ");
+      const tag = isReviewed ? "[REVIEWED]" : "[NEW]";
+      opt.textContent = `${tag} ${c.case_id} | ${statusClean} | Target: ${c.predicted_atm_id || "ATM"} (${c.priority_level || "MED"})`;
+      if (!isReviewed) {
+        opt.style.fontWeight = "bold";
+      }
+      if (c.case_id === currentVal) opt.selected = true;
+      select.appendChild(opt);
+    });
+  } else {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No active cases in queue";
+    select.appendChild(opt);
+  }
+
+  if (countBadge) {
+    if (unreadCount > 0) {
+      countBadge.innerText = `${unreadCount} NEW`;
+      countBadge.style.display = "inline-flex";
+    } else {
+      countBadge.style.display = "none";
+    }
+  }
+}
+
+/**
+ * Displays a professional, non-blocking notification when an actual new case is reported.
+ */
+function showNewCaseNotification(data) {
+  let container = document.getElementById("liveCaseNotificationContainer");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "liveCaseNotificationContainer";
+    container.className = "live-notification-container";
+    document.body.appendChild(container);
+  }
+
+  const notif = document.createElement("div");
+  notif.className = "new-case-notification-card";
+  notif.setAttribute("role", "alert");
+
+  const pLevel = (data.priorityLevel || "MEDIUM").toUpperCase();
+  const pClass = pLevel === "CRITICAL" ? "priority-critical" : (pLevel === "HIGH" ? "priority-high" : "priority-moderate");
+
+  notif.innerHTML = `
+    <div class="notif-header">
+      <div class="notif-title-group">
+        <svg class="notif-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span class="notif-title">New Case Reported</span>
+      </div>
+      <button type="button" class="notif-close-btn" aria-label="Dismiss Notification">&times;</button>
+    </div>
+    <div class="notif-body">
+      <div class="notif-row">
+        <span class="notif-case-id font-mono">${escapeHtml(data.caseId)}</span>
+        <span class="priority-tag ${pClass}">${pLevel}</span>
+      </div>
+      <div class="notif-detail">
+        Target: <b style="color: var(--accent-blue);">${escapeHtml(data.targetAtm)}</b> &bull; ${escapeHtml(data.zone)}
+      </div>
+    </div>
+    <div class="notif-footer">
+      <button type="button" class="notif-action-btn">Inspect &amp; Triage Case &rarr;</button>
+    </div>
+  `;
+
+  const actionBtn = notif.querySelector(".notif-action-btn");
+  if (actionBtn) {
+    actionBtn.onclick = () => {
+      markCaseReviewed(data.caseId);
+      loadCaseById(data.caseId);
+      notif.remove();
+    };
+  }
+
+  const closeBtn = notif.querySelector(".notif-close-btn");
+  if (closeBtn) {
+    closeBtn.onclick = () => notif.remove();
+  }
+
+  container.appendChild(notif);
+
+  setTimeout(() => {
+    if (notif.parentNode) {
+      notif.style.opacity = "0";
+      notif.style.transform = "translateX(20px)";
+      notif.style.transition = "all 0.3s ease-out";
+      setTimeout(() => notif.remove(), 300);
+    }
+  }, 8000);
+}
+
+/**
+ * Live polling for Investigator Console to detect newly reported cases and state changes.
  */
 function startInvestigatorPolling() {
   if (_investigatorPollInterval) clearInterval(_investigatorPollInterval);
@@ -2105,7 +2382,7 @@ function startInvestigatorPolling() {
     } catch (err) {
       console.warn("Investigator polling check:", err);
     }
-  }, 4000);
+  }, 3000);
 }
 
 /**
@@ -2143,7 +2420,7 @@ function startCitizenPolling(caseId) {
     } catch (err) {
       console.warn("Citizen polling check:", err);
     }
-  }, 3500);
+  }, 2500);
 }
 
 /**
@@ -2311,30 +2588,35 @@ export async function applyConsoleMode(role) {
 }
 
 /**
- * Loads recent operational cases into the queue select dropdown.
+ * Loads recent operational cases into the queue select dropdown and triggers new-case notifications.
  */
 async function loadInvestigatorQueue() {
   const select = document.getElementById("investigatorCaseSelect");
   if (!select) return;
   try {
     const cases = await API.getCases({ limit: 30 });
-    const currentVal = select.value;
-    select.innerHTML = '<option value="">-- Select Incoming Case from Queue --</option>';
-    if (cases && cases.length > 0) {
-      cases.forEach((c) => {
-        const opt = document.createElement("option");
-        opt.value = c.case_id;
-        const statusClean = (c.case_status || "NEW_ALERT").replace(/_/g, " ");
-        opt.textContent = `${c.case_id} | ${statusClean} | Target: ${c.predicted_atm_id || "ATM"} (${c.priority_level || "MED"})`;
-        if (c.case_id === currentVal) opt.selected = true;
-        select.appendChild(opt);
-      });
+    _currentCachedCases = cases || [];
+
+    if (_knownInvestigatorCaseIds === null) {
+      // First queue initialization: track existing cases without firing notifications
+      _knownInvestigatorCaseIds = new Set((cases || []).map(c => c.case_id));
     } else {
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.textContent = "No active cases in queue";
-      select.appendChild(opt);
+      // Shared DB polling check: detect newly arrived cases reported by citizen console
+      const newArrivals = (cases || []).filter(c => !_knownInvestigatorCaseIds.has(c.case_id));
+      if (newArrivals.length > 0) {
+        newArrivals.forEach(c => {
+          _knownInvestigatorCaseIds.add(c.case_id);
+          showNewCaseNotification({
+            caseId: c.case_id,
+            priorityLevel: c.priority_level || "MEDIUM",
+            targetAtm: c.predicted_atm_id || "ATM",
+            zone: (c.predicted_zone_id || "").replace("ZONE_", "Zone "),
+          });
+        });
+      }
     }
+
+    updateQueueDropdownUI();
   } catch (err) {
     console.warn("Could not load case queue:", err);
   }
@@ -2346,6 +2628,7 @@ async function loadInvestigatorQueue() {
 async function loadCaseById(caseId) {
   if (!caseId) return;
   try {
+    markCaseReviewed(caseId);
     showToast(`Loading operational case ${caseId}...`, "info");
     const evidence = await API.getEvidence(caseId);
     if (!evidence || !evidence.case) {
@@ -2428,7 +2711,10 @@ function setupConsoleSwitcher() {
   if (select) {
     select.addEventListener("change", (e) => {
       const cid = e.target.value;
-      if (cid) loadCaseById(cid);
+      if (cid) {
+        markCaseReviewed(cid);
+        loadCaseById(cid);
+      }
     });
   }
 
@@ -2438,6 +2724,7 @@ function setupConsoleSwitcher() {
     btnManual.addEventListener("click", () => {
       const cid = inputManual.value.trim();
       if (cid) {
+        markCaseReviewed(cid);
         loadCaseById(cid);
       } else {
         showToast("Please enter a valid Case ID", "warning");
@@ -2446,7 +2733,10 @@ function setupConsoleSwitcher() {
     inputManual.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         const cid = inputManual.value.trim();
-        if (cid) loadCaseById(cid);
+        if (cid) {
+          markCaseReviewed(cid);
+          loadCaseById(cid);
+        }
       }
     });
   }

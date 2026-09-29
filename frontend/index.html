@@ -107,6 +107,7 @@
           <div class="queue-title-group">
             <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="m9 14 2 2 4-4"/></svg>
             <span class="queue-heading">Operational Case Queue</span>
+            <span id="queueNewCountBadge" class="queue-new-count-badge" style="display:none;">0 NEW</span>
           </div>
           <button type="button" id="btnRefreshCaseQueue" class="btn-op-secondary" title="Refresh Active Operational Cases">
             <svg class="btn-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
@@ -468,6 +469,11 @@
             </div>
           </div>
         </details>
+
+        <!-- 4b. Final Resolution / Case Outcome Section - CLOSED CASES ONLY (Replaces Playbook) -->
+        <div id="caseFinalResolutionSection" class="final-resolution-card" style="display:none;">
+          <!-- Dynamically populated when case status is CLOSED/RESOLVED -->
+        </div>
 
         <!-- 5. Progressive Disclosure: Why this prediction? (Explainability) -->
         <details class="intel-accordion">
