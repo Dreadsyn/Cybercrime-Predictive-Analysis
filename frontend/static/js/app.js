@@ -688,6 +688,7 @@ function renderPredictionResult(result) {
         btnViewDispatch.style.display = "inline-flex";
         btnViewDispatch.className = "btn-op-secondary";
         btnViewDispatch.title = "View Field Dispatch Details (Read-Only)";
+      }
     }
   }
 
