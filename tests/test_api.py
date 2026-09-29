@@ -2866,6 +2866,130 @@ def test_outcome_mapping_fidelity_across_types():
     assert out_unres["is_spatial_hit"] is False
 
 
+def test_console_role_separation_and_polling_fidelity():
+    """
+    Verifies end-to-end role console separation and live polling fidelity:
+    1. Citizen creates case through complaint prediction.
+    2. Citizen can track their specific case and receives prediction context (top candidates, explainability).
+    3. Citizen role cannot access investigator queue (list_cases) -> HTTP 403.
+    4. Investigator role can list incoming queue cases.
+    5. Citizen role cannot dispatch patrol units -> HTTP 403.
+    6. Investigator dispatches patrol unit -> status advances to PATROL_DISPATCHED.
+    7. Citizen polls case -> sees PATROL_DISPATCHED and can retrieve dispatch record.
+    8. Citizen role cannot record or alter operational outcomes -> HTTP 403.
+    9. Investigator logs verified outcome -> status resolves to CLOSED/RESOLVED.
+    10. Citizen polls case -> sees terminal CLOSED state and can retrieve outcome record.
+    11. Immutability: Once outcome is logged, subsequent attempts to alter outcome are rejected with HTTP 400.
+    """
+    req = PredictionRequest(
+        crime_category="PHISHING_UPI",
+        reported_amount=42000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_ICIC_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=12.0,
+        incident_hour=15,
+        incident_day_of_week=4,
+        complaint_id="CMP-ROLE-SEPARATION-01",
+    )
+    pred_res = predict_cashout_location(req)
+    case_id = pred_res["case_id"]
+    assert case_id is not None
+
+    # Citizen can track their own case
+    citizen_view = get_case_details(case_id)
+    assert citizen_view["case_id"] == case_id
+    assert citizen_view["case_status"] == "NEW_ALERT"
+    assert "top_candidates" in citizen_view
+    assert isinstance(citizen_view["top_candidates"], list)
+    assert "explanation_codes" in citizen_view
+
+    # Citizen cannot list full operational queue
+    with pytest.raises(HTTPException) as exc_queue:
+        list_cases(
+            status=None,
+            limit=25,
+            _role=require_investigator_role(x_app_role="reporting"),
+        )
+    assert exc_queue.value.status_code == 403
+
+    # Investigator can list operational queue
+    inv_queue = list_cases(
+        status=None,
+        limit=25,
+        _role=require_investigator_role(x_app_role="investigator"),
+    )
+    assert isinstance(inv_queue, list)
+    assert any(c["case_id"] == case_id for c in inv_queue)
+
+    # Citizen cannot dispatch
+    with pytest.raises(HTTPException) as exc_disp:
+        dispatch_patrol_endpoint(
+            case_id,
+            request=DispatchCreateRequest(patrol_unit="PCR-ROLE-01"),
+            _role=require_investigator_role(x_app_role="reporting"),
+        )
+    assert exc_disp.value.status_code == 403
+
+    # Investigator dispatches patrol unit
+    disp_res = dispatch_patrol_endpoint(
+        case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-ROLE-01"),
+        _role=require_investigator_role(x_app_role="investigator"),
+    )
+    assert disp_res["dispatch_status"] == "DISPATCHED"
+
+    # Citizen polls case -> sees PATROL_DISPATCHED
+    citizen_poll1 = get_case_details(case_id)
+    assert citizen_poll1["case_status"] == "PATROL_DISPATCHED"
+
+    # Citizen can read dispatch status
+    citizen_disp = get_case_dispatch_endpoint(case_id)
+    assert citizen_disp["patrol_unit_assigned"] == "PCR-ROLE-01"
+
+    # Citizen cannot log outcome
+    with pytest.raises(HTTPException) as exc_out:
+        record_case_outcome_endpoint(
+            case_id,
+            request=CaseOutcomeCreateRequest(outcome_status="INTERCEPTED_AT_PREDICTED_ATM"),
+            _role=require_investigator_role(x_app_role="reporting"),
+        )
+    assert exc_out.value.status_code == 403
+
+    # Investigator records verified outcome
+    out_res = record_case_outcome_endpoint(
+        case_id,
+        request=CaseOutcomeCreateRequest(
+            outcome_status="INTERCEPTED_AT_PREDICTED_ATM",
+            notes="Suspect intercepted at predicted ATM corridor.",
+            auto_resolve_case=True,
+        ),
+        _role=require_investigator_role(x_app_role="investigator"),
+    )
+    assert out_res["outcome_status"] == "INTERCEPTED_AT_PREDICTED_ATM"
+    assert out_res["is_spatial_hit"] is True
+
+    # Citizen polls case -> sees terminal RESOLVED/CLOSED
+    citizen_poll2 = get_case_details(case_id)
+    assert citizen_poll2["case_status"] in ("RESOLVED", "CLOSED")
+
+    # Citizen can read final outcome
+    citizen_out = get_case_outcome_endpoint(case_id)
+    assert citizen_out["outcome_status"] == "INTERCEPTED_AT_PREDICTED_ATM"
+
+    # Immutability check: cannot alter outcome once case is resolved
+    with pytest.raises(HTTPException) as exc_im:
+        record_case_outcome_endpoint(
+            case_id,
+            request=CaseOutcomeCreateRequest(outcome_status="FALSE_ALERT"),
+            _role=require_investigator_role(x_app_role="investigator"),
+        )
+    assert exc_im.value.status_code == 400
+    assert "finalized and cannot be modified" in exc_im.value.detail.lower()
+
+
+
 
 
 

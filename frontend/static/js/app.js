@@ -330,12 +330,18 @@ function setupFormListeners() {
 
     try {
       const result = await API.predict(payload);
+      if (result.case_id) {
+        sessionStorage.setItem("citizen_active_case_id", result.case_id);
+        startCitizenPolling(result.case_id);
+      }
       renderPredictionResult(result);
       MapController.highlightPrediction(result.predicted_atm_id, result.top_candidates);
 
-      // Refresh recent alert history and counters
-      const updatedPredictions = await API.getPredictions(10);
-      renderAlertHistory(updatedPredictions);
+      // Refresh recent alert history and counters if permitted
+      try {
+        const updatedPredictions = await API.getPredictions(10);
+        renderAlertHistory(updatedPredictions);
+      } catch {}
 
       const kpiAlerts = document.getElementById("kpiAlerts");
       if (kpiAlerts) {
@@ -343,9 +349,10 @@ function setupFormListeners() {
         kpiAlerts.innerText = (currentAlerts + 1).toLocaleString();
       }
 
-      // Refresh clusters & spatial convergences
-      loadClusters();
-      loadConvergences();
+      if (getActiveRole() === "investigator") {
+        loadClusters();
+        loadConvergences();
+      }
 
       showToast(`Forecast Generated: Target ${result.predicted_atm_id} (Priority: ${result.priority_level} · Score: ${result.priority_score}/100)`, "success");
     } catch (err) {
@@ -451,6 +458,179 @@ export function getOutcomeDetails(outcome, defaultPredictedAtm = "--") {
       actualAtmText: outcome.actual_atm_id || "Unknown / Unresolved",
       isHit: false,
     };
+  }
+}
+
+/**
+ * Renders the role-appropriate playbook:
+ * - Case Reporting / Citizen Console: "What You Should Do Now" victim safety guidance.
+ * - Investigator Console: Law Enforcement Tactical SOP actions (PCR dispatch, cordon, nodal bank freeze).
+ */
+function renderRolePlaybook(result, role) {
+  const playbookCard = document.getElementById("playbookCard");
+  const playbookTag = document.getElementById("playbookTag");
+  const playbookTitle = document.getElementById("playbookTitle");
+  const playbookBadge = document.getElementById("playbookDispositionBadge");
+  const playbookSummary = document.getElementById("playbookSummary");
+  const playbookList = document.getElementById("playbookActionsList");
+  const copyBtn = document.getElementById("btnCopyDispatch");
+
+  if (!playbookCard) return;
+
+  if (role === "reporting") {
+    // Citizen Safety Guidance Playbook
+    playbookCard.style.display = "block";
+    if (playbookTag) playbookTag.innerText = "SAFETY";
+    if (playbookTitle) playbookTitle.innerText = "What You Should Do Now";
+    if (playbookBadge) {
+      playbookBadge.innerText = "VICTIM SAFETY GUIDANCE";
+      playbookBadge.className = "playbook-disposition-tag tag-citizen";
+    }
+    if (playbookSummary) {
+      playbookSummary.innerText = "Emergency incident checklist: follow these steps immediately to mitigate financial loss and assist law enforcement.";
+    }
+
+    const citizenSteps = [
+      {
+        step: 1,
+        urgency: "CRITICAL",
+        title: "Call National Cyber Helpline 1930",
+        target: "Helpline 1930",
+        description: "Immediately dial 1930 and report your incident reference number and bank account details for immediate national interdiction queueing.",
+        rationale: "Rapid reporting enables cyber cells to initiate inter-bank freeze protocols on mule accounts before cash-out.",
+      },
+      {
+        step: 2,
+        urgency: "IMMEDIATE",
+        title: "Request Originating Bank Lien / Freeze",
+        target: "Your Home Bank",
+        description: "Contact your bank's 24/7 fraud dispute desk. Provide the UPI / IMPS / NEFT transaction reference ID and demand an immediate stop-payment or debit lien.",
+        rationale: "Banks maintain 24/7 nodal liaison channels to hold funds in transit at destination accounts.",
+      },
+      {
+        step: 3,
+        urgency: "HIGH",
+        title: "Preserve Digital Transaction Evidence",
+        target: "Device Screenshots",
+        description: "Capture uncropped screenshots of transaction receipts, SMS debit notifications, caller phone numbers, and WhatsApp/Telegram chat logs.",
+        rationale: "Timestamped digital artifacts are mandatory evidence required by investigating cybercrime units.",
+      },
+      {
+        step: 4,
+        urgency: "STANDARD",
+        title: "Save Case Tracking ID",
+        target: `Case ${result.case_id || 'Reference'}`,
+        description: "Keep note of your Case ID above. Monitor this console for real-time dispatch updates and official police outcome logging.",
+        rationale: "Law enforcement operations units receive real-time alerts linked directly to this case identifier.",
+      },
+    ];
+
+    if (playbookList) {
+      playbookList.innerHTML = citizenSteps
+        .map(action => `
+          <div class="playbook-action-card" id="action-step-${action.step}">
+            <div class="playbook-card-header">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="playbook-step-badge urgency-${action.urgency.toLowerCase()}">Step ${action.step} · ${action.urgency}</span>
+                <span class="playbook-action-title">${escapeHtml(action.title)}</span>
+              </div>
+              <span class="playbook-action-target">${escapeHtml(action.target)}</span>
+            </div>
+            <div class="playbook-action-desc">${escapeHtml(action.description)}</div>
+            <div class="playbook-action-rationale">&#8627; Purpose: ${escapeHtml(action.rationale)}</div>
+            <div class="playbook-action-footer">
+              <label class="playbook-checkbox-label">
+                <input type="checkbox" onchange="this.closest('.playbook-action-card').classList.toggle('completed', this.checked)">
+                <span>Completed</span>
+              </label>
+            </div>
+          </div>
+        `)
+        .join("");
+    }
+
+    if (copyBtn) {
+      copyBtn.onclick = async () => {
+        const textToCopy = `[CYBERCRIME REPORT REFERENCE] Case ID: ${result.case_id || '--'} | Target Sector: ${result.predicted_zone_id || '--'} | Status: ${result.case_status || 'NEW_ALERT'}\nEmergency Actions:\n1. Call 1930 Helpline immediately.\n2. Contact home bank for immediate transaction lien.\n3. Preserve all digital transaction screenshots.`;
+        try {
+          await navigator.clipboard.writeText(textToCopy);
+          const iconSvg = document.getElementById("copyBriefIconSvg");
+          const text = document.getElementById("copyBriefText");
+          if (iconSvg) iconSvg.innerHTML = `<polyline points="20 6 9 17 4 12"/>`;
+          if (text) text.innerText = "Copied!";
+          copyBtn.classList.add("copied");
+          showToast("Citizen case summary copied to clipboard!", "success");
+          setTimeout(() => {
+            if (iconSvg) iconSvg.innerHTML = `<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>`;
+            if (text) text.innerText = "Copy Reference";
+            copyBtn.classList.remove("copied");
+          }, 2500);
+        } catch (e) {
+          showToast("Failed to copy reference: " + e.message, "error");
+        }
+      };
+    }
+  } else {
+    // Law Enforcement Tactical SOP Playbook
+    playbookCard.style.display = "block";
+    if (playbookTag) playbookTag.innerText = "SOP";
+    if (playbookTitle) playbookTitle.innerText = "Tactical Action Playbook (Law Enforcement)";
+    if (playbookBadge) {
+      playbookBadge.innerText = (result.playbook?.disposition || "TACTICAL INTERCEPTION").replace(/_/g, " ");
+      playbookBadge.className = "playbook-disposition-tag";
+    }
+    if (playbookSummary) {
+      playbookSummary.innerText = result.playbook?.summary || `Deploy nearest field unit to secure ${result.predicted_atm_id}; cordon cash-out corridor and preserve surveillance feeds.`;
+    }
+
+    if (playbookList && Array.isArray(result.playbook?.actions)) {
+      playbookList.innerHTML = result.playbook.actions
+        .map(action => {
+          const urgencyClass = (action.urgency || "standard").toLowerCase();
+          return `
+            <div class="playbook-action-card" id="action-step-${action.step}">
+              <div class="playbook-card-header">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span class="playbook-step-badge urgency-${urgencyClass}">Step ${action.step} · ${action.urgency}</span>
+                  <span class="playbook-action-title">${escapeHtml(action.title)}</span>
+                </div>
+                <span class="playbook-action-target">${escapeHtml(action.target)}</span>
+              </div>
+              <div class="playbook-action-desc">${escapeHtml(action.description)}</div>
+              <div class="playbook-action-rationale">&#8627; Rationale: ${escapeHtml(action.rationale)}</div>
+              <div class="playbook-action-footer">
+                <label class="playbook-checkbox-label">
+                  <input type="checkbox" onchange="this.closest('.playbook-action-card').classList.toggle('completed', this.checked)">
+                  <span>Mark Executed</span>
+                </label>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    if (copyBtn) {
+      copyBtn.onclick = async () => {
+        const textToCopy = result.playbook?.dispatch_brief || result.playbook?.summary || "";
+        try {
+          await navigator.clipboard.writeText(textToCopy);
+          const iconSvg = document.getElementById("copyBriefIconSvg");
+          const text = document.getElementById("copyBriefText");
+          if (iconSvg) iconSvg.innerHTML = `<polyline points="20 6 9 17 4 12"/>`;
+          if (text) text.innerText = "Copied!";
+          copyBtn.classList.add("copied");
+          showToast("Tactical Dispatch Brief copied to clipboard!", "success");
+          setTimeout(() => {
+            if (iconSvg) iconSvg.innerHTML = `<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>`;
+            if (text) text.innerText = "Copy Brief";
+            copyBtn.classList.remove("copied");
+          }, 2500);
+        } catch (e) {
+          showToast("Failed to copy brief: " + e.message, "error");
+        }
+      };
+    }
   }
 }
 
@@ -612,8 +792,22 @@ function renderPredictionResult(result) {
     }
 
     if (dispatchBadge) {
-      if (!caseId || role === "reporting") {
+      if (!caseId) {
         dispatchBadge.style.display = "none";
+      } else if (role === "reporting") {
+        if (status === "PATROL_DISPATCHED" || status === "OUTCOME_PENDING") {
+          dispatchBadge.innerText = "POLICE PATROL DISPATCHED";
+          dispatchBadge.className = "dispatch-badge status-dispatched";
+          dispatchBadge.style.display = "inline-flex";
+        } else if (status === "RESOLVED" || status === "CLOSED") {
+          dispatchBadge.innerText = "INTERVENTION COMPLETED";
+          dispatchBadge.className = "dispatch-badge status-dispatched";
+          dispatchBadge.style.display = "inline-flex";
+        } else {
+          dispatchBadge.innerText = "POLICE ACTION PENDING";
+          dispatchBadge.className = "dispatch-badge";
+          dispatchBadge.style.display = "inline-flex";
+        }
       } else if (status === "PATROL_DISPATCHED" || status === "OUTCOME_PENDING") {
         const unitName = currentDisp?.patrol_unit_assigned || "PCR";
         dispatchBadge.innerText = `${unitName}: DISPATCHED`;
@@ -686,6 +880,18 @@ function renderPredictionResult(result) {
         citizenNotice.style.display = "flex";
         const cNum = document.getElementById("citizenTrackingNumber");
         if (cNum) cNum.innerText = caseId;
+        const cText = document.getElementById("citizenTrackingText");
+        if (cText) {
+          if (status === "PATROL_DISPATCHED") {
+            cText.innerText = "Law Enforcement Update: Active patrol unit dispatched to secure predicted cash-out corridor.";
+          } else if (status === "OUTCOME_PENDING") {
+            cText.innerText = "Law Enforcement Update: Patrol on-scene at cash-out zone • Interdiction operation in progress.";
+          } else if (status === "RESOLVED" || status === "CLOSED") {
+            cText.innerText = "Law Enforcement Update: Operational response concluded • Official case resolution recorded below.";
+          } else {
+            cText.innerText = `Complaint Logged (${caseId}) • Incident queued in Law Enforcement operational dispatch terminal.`;
+          }
+        }
       }
       return;
     }
@@ -854,7 +1060,9 @@ function renderPredictionResult(result) {
   // Hero Immediate Action Directive
   const heroActionEl = document.getElementById("heroActionDirective");
   if (heroActionEl) {
-    if (result.playbook && result.playbook.summary) {
+    if (getActiveRole() === "reporting") {
+      heroActionEl.innerText = "Citizen Advisory: Follow emergency guidance below. Call National Cyber Helpline 1930 and request an immediate transaction lien with your bank.";
+    } else if (result.playbook && result.playbook.summary) {
       heroActionEl.innerText = result.playbook.summary;
     } else if (result.playbook && Array.isArray(result.playbook.actions) && result.playbook.actions.length > 0) {
       heroActionEl.innerText = `${result.playbook.actions[0].title}: ${result.playbook.actions[0].description}`;
@@ -884,69 +1092,8 @@ function renderPredictionResult(result) {
     };
   }
 
-  // Milestone 1 Feature 7: Tactical Investigator Action Playbook
-  const playbookCard = document.getElementById("playbookCard");
-  const playbookBadge = document.getElementById("playbookDispositionBadge");
-  const playbookSummary = document.getElementById("playbookSummary");
-  const playbookList = document.getElementById("playbookActionsList");
-  const copyBtn = document.getElementById("btnCopyDispatch");
-
-  if (result.playbook) {
-    if (playbookCard) playbookCard.style.display = "block";
-    if (playbookBadge) playbookBadge.innerText = (result.playbook.disposition || "TACTICAL SOP").replace(/_/g, " ");
-    if (playbookSummary) playbookSummary.innerText = result.playbook.summary || "";
-
-    if (playbookList && Array.isArray(result.playbook.actions)) {
-      playbookList.innerHTML = result.playbook.actions
-        .map(action => {
-          const urgencyClass = (action.urgency || "standard").toLowerCase();
-          return `
-            <div class="playbook-action-card" id="action-step-${action.step}">
-              <div class="playbook-card-header">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span class="playbook-step-badge urgency-${urgencyClass}">Step ${action.step} · ${action.urgency}</span>
-                  <span class="playbook-action-title">${escapeHtml(action.title)}</span>
-                </div>
-                <span class="playbook-action-target">${escapeHtml(action.target)}</span>
-              </div>
-              <div class="playbook-action-desc">${escapeHtml(action.description)}</div>
-              <div class="playbook-action-rationale">&#8627; Rationale: ${escapeHtml(action.rationale)}</div>
-              <div class="playbook-action-footer">
-                <label class="playbook-checkbox-label">
-                  <input type="checkbox" onchange="this.closest('.playbook-action-card').classList.toggle('completed', this.checked)">
-                  <span>Mark Executed</span>
-                </label>
-              </div>
-            </div>
-          `;
-        })
-        .join("");
-    }
-
-    if (copyBtn) {
-      copyBtn.onclick = async () => {
-        const textToCopy = result.playbook.dispatch_brief || result.playbook.summary || "";
-        try {
-          await navigator.clipboard.writeText(textToCopy);
-          const iconSvg = document.getElementById("copyBriefIconSvg");
-          const text = document.getElementById("copyBriefText");
-          if (iconSvg) iconSvg.innerHTML = `<polyline points="20 6 9 17 4 12"/>`;
-          if (text) text.innerText = "Copied!";
-          copyBtn.classList.add("copied");
-          showToast("Tactical Dispatch Brief copied to clipboard!", "success");
-          setTimeout(() => {
-            if (iconSvg) iconSvg.innerHTML = `<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>`;
-            if (text) text.innerText = "Copy Brief";
-            copyBtn.classList.remove("copied");
-          }, 2500);
-        } catch (e) {
-          showToast("Failed to copy brief: " + e.message, "error");
-        }
-      };
-    }
-  } else if (playbookCard) {
-    playbookCard.style.display = "none";
-  }
+  // Role-appropriate Action Playbook (Citizen Safety Guidance vs Police Tactical SOP)
+  renderRolePlaybook(result, getActiveRole());
 
   // Explainability Reason Codes (Pills inside accordion)
   const reasonsContainer = document.getElementById("predReasons");
@@ -1926,8 +2073,125 @@ function showToast(message, type = "info") {
 /**
  * Switch operational workspace console mode (reporting vs investigator).
  */
-export function applyConsoleMode(role) {
+let _citizenPollInterval = null;
+let _investigatorPollInterval = null;
+
+function stopAllPolling() {
+  if (_citizenPollInterval) {
+    clearInterval(_citizenPollInterval);
+    _citizenPollInterval = null;
+  }
+  if (_investigatorPollInterval) {
+    clearInterval(_investigatorPollInterval);
+    _investigatorPollInterval = null;
+  }
+}
+
+/**
+ * Live polling for Investigator Console to detect newly reported cases.
+ */
+function startInvestigatorPolling() {
+  if (_investigatorPollInterval) clearInterval(_investigatorPollInterval);
+  _investigatorPollInterval = setInterval(async () => {
+    if (getActiveRole() !== "investigator") return;
+    try {
+      await loadInvestigatorQueue();
+      if (window.currentActivePrediction?.case_id) {
+        const c = await API.getCase(window.currentActivePrediction.case_id);
+        if (c && c.case_status !== window.currentActivePrediction.case_status) {
+          await loadCaseById(c.case_id);
+        }
+      }
+    } catch (err) {
+      console.warn("Investigator polling check:", err);
+    }
+  }, 4000);
+}
+
+/**
+ * Live polling for Citizen Console to receive real-time dispatch and outcome updates.
+ */
+function startCitizenPolling(caseId) {
+  if (!caseId) return;
+  if (_citizenPollInterval) clearInterval(_citizenPollInterval);
+  _citizenPollInterval = setInterval(async () => {
+    if (getActiveRole() !== "reporting") return;
+    try {
+      const c = await API.getCase(caseId);
+      if (!c) return;
+
+      let disp = null;
+      let out = null;
+      try { disp = await API.getCaseDispatch(caseId); } catch {}
+      try { out = await API.getCaseOutcome(caseId); } catch {}
+
+      if (window.currentActivePrediction && window.currentActivePrediction.case_id === caseId) {
+        window.currentActivePrediction.case_status = c.case_status;
+        window.currentActivePrediction._dispatch = disp;
+        window.currentActivePrediction._outcome = out;
+        if (window._currentUpdateCaseControls) {
+          window._currentUpdateCaseControls(caseId, c.case_status, disp, out);
+        }
+      } else {
+        await loadCitizenCase(caseId);
+      }
+
+      if (c.case_status === "RESOLVED" || c.case_status === "CLOSED") {
+        clearInterval(_citizenPollInterval);
+        _citizenPollInterval = null;
+      }
+    } catch (err) {
+      console.warn("Citizen polling check:", err);
+    }
+  }, 3500);
+}
+
+/**
+ * Loads and renders a citizen's active reported case.
+ */
+async function loadCitizenCase(caseId) {
+  if (!caseId) return;
+  try {
+    const c = await API.getCase(caseId);
+    if (!c) return;
+
+    let disp = null;
+    let out = null;
+    try { disp = await API.getCaseDispatch(caseId); } catch {}
+    try { out = await API.getCaseOutcome(caseId); } catch {}
+
+    const predObj = {
+      case_id: c.case_id,
+      case_status: c.case_status,
+      predicted_atm_id: c.predicted_atm_id,
+      predicted_zone_id: c.predicted_zone_id,
+      priority_score: c.priority_score,
+      priority_level: c.priority_level || "MEDIUM",
+      confidence_score: c.confidence_score || 0.15,
+      predicted_window_start: c.created_timestamp,
+      predicted_window_end: "",
+      predicted_lead_time_mins: 20,
+      risk_level: c.priority_level === "CRITICAL" ? "CRITICAL" : (c.priority_level === "HIGH" ? "ELEVATED" : "MODERATE"),
+      top_candidates: c.top_candidates || [],
+      explanation_codes: c.explanation_codes || [],
+      priority_reasons: c.priority_reasons || [],
+      _dispatch: disp,
+      _outcome: out,
+    };
+
+    renderPredictionResult(predObj);
+    MapController.highlightPrediction(predObj.predicted_atm_id, predObj.top_candidates);
+  } catch (err) {
+    console.warn("Could not load citizen case:", err);
+  }
+}
+
+/**
+ * Switch operational workspace console mode (reporting vs investigator).
+ */
+export async function applyConsoleMode(role) {
   setActiveRole(role);
+  stopAllPolling();
 
   const btnReporting = document.getElementById("btnRoleReporting");
   const btnInvestigator = document.getElementById("btnRoleInvestigator");
@@ -1935,6 +2199,10 @@ export function applyConsoleMode(role) {
   const intakeSection = document.getElementById("intakeFormSection");
   const queueSection = document.getElementById("investigatorQueueSection");
   const citizenNotice = document.getElementById("citizenTrackingNotice");
+  const forecastCard = document.getElementById("forecastCard");
+  const placeholderCard = document.getElementById("forecastCardPlaceholder");
+  const placeholderTitle = document.getElementById("forecastPlaceholderTitle");
+  const placeholderText = document.getElementById("forecastPlaceholderText");
 
   // Tab buttons for investigator-only intel
   const tabClusters = document.querySelector('.tab-btn[data-tab="tab-clusters"]');
@@ -1953,9 +2221,8 @@ export function applyConsoleMode(role) {
     if (headerRoleBadge) headerRoleBadge.innerText = "Investigator Ops Mode";
 
     if (queueSection) queueSection.style.display = "block";
-    if (intakeSection) intakeSection.style.display = "block";
-    const intakeTitle = document.getElementById("intakeHeadingTitle");
-    if (intakeTitle) intakeTitle.innerText = "Manual Incident Triage (Intake)";
+    // Investigator never sees complaint intake or Run Predictive Forecast button
+    if (intakeSection) intakeSection.style.display = "none";
 
     if (citizenNotice) citizenNotice.style.display = "none";
 
@@ -1964,8 +2231,22 @@ export function applyConsoleMode(role) {
     if (tabConvergences) tabConvergences.style.display = "inline-flex";
     if (tabPerformance) tabPerformance.style.display = "inline-flex";
 
-    // Populate queue dropdown
-    loadInvestigatorQueue();
+    // If no case is loaded in the workbench, display investigator placeholder
+    if (!window.currentActivePrediction) {
+      if (placeholderCard) placeholderCard.style.display = "flex";
+      if (forecastCard) forecastCard.style.display = "none";
+      if (placeholderTitle) placeholderTitle.innerText = "Awaiting Operational Case Selection";
+      if (placeholderText) {
+        placeholderText.innerText = "Select an incoming incident from the operational queue above to inspect predictive evidence, coordinate field patrol routing, and log verified outcomes.";
+      }
+    } else {
+      if (placeholderCard) placeholderCard.style.display = "none";
+      if (forecastCard) forecastCard.style.display = "block";
+    }
+
+    // Populate queue and start live polling for incoming citizen reports
+    await loadInvestigatorQueue();
+    startInvestigatorPolling();
   } else {
     // Case Reporting / Citizen Console
     if (btnReporting) btnReporting.classList.add("active");
@@ -1973,17 +2254,18 @@ export function applyConsoleMode(role) {
     if (headerRoleBadge) headerRoleBadge.innerText = "Citizen Reporting Mode";
 
     if (queueSection) queueSection.style.display = "none";
+    // Citizen enters complaint/case details
     if (intakeSection) intakeSection.style.display = "block";
     const intakeTitle = document.getElementById("intakeHeadingTitle");
     if (intakeTitle) intakeTitle.innerText = "Predictive Incident Triage";
 
-    // Hide operational buttons
+    // Hide operational investigator buttons
     if (btnTransition) btnTransition.style.display = "none";
     if (btnRecordOutcome) btnRecordOutcome.style.display = "none";
     if (btnViewDispatch) btnViewDispatch.style.display = "none";
     if (btnExportEvidence) btnExportEvidence.style.display = "none";
 
-    // Hide investigator-only tabs
+    // Hide investigator-only intel tabs
     if (tabClusters) tabClusters.style.display = "none";
     if (tabConvergences) tabConvergences.style.display = "none";
     if (tabPerformance) tabPerformance.style.display = "none";
@@ -1995,21 +2277,36 @@ export function applyConsoleMode(role) {
       if (defaultTabBtn) defaultTabBtn.click();
     }
 
-    if (citizenNotice && window.currentActivePrediction?.case_id) {
-      citizenNotice.style.display = "flex";
-      const cNum = document.getElementById("citizenTrackingNumber");
-      if (cNum) cNum.innerText = window.currentActivePrediction.case_id;
+    // Citizen tracks their own case
+    const savedCitizenCaseId = sessionStorage.getItem("citizen_active_case_id");
+    if (window.currentActivePrediction && window.currentActivePrediction.case_id === savedCitizenCaseId) {
+      if (placeholderCard) placeholderCard.style.display = "none";
+      if (forecastCard) forecastCard.style.display = "block";
+      startCitizenPolling(savedCitizenCaseId);
+    } else if (savedCitizenCaseId) {
+      await loadCitizenCase(savedCitizenCaseId);
+      startCitizenPolling(savedCitizenCaseId);
+    } else {
+      if (placeholderCard) placeholderCard.style.display = "flex";
+      if (forecastCard) forecastCard.style.display = "none";
+      if (placeholderTitle) placeholderTitle.innerText = "Awaiting Incident Complaint Intake";
+      if (placeholderText) {
+        placeholderText.innerText = "Select an operational scenario preset above or submit complaint parameters to trigger calibrated spatial forecasting, tactical triage, and field patrol routing.";
+      }
     }
   }
 
-  // Update controls for active prediction if present
-  if (window.currentActivePrediction && window._currentUpdateCaseControls) {
-    window._currentUpdateCaseControls(
-      window.currentActivePrediction.case_id,
-      window.currentActivePrediction.case_status,
-      window.currentActivePrediction._dispatch,
-      window.currentActivePrediction._outcome
-    );
+  // Update controls and playbook for active prediction
+  if (window.currentActivePrediction) {
+    renderRolePlaybook(window.currentActivePrediction, role);
+    if (window._currentUpdateCaseControls) {
+      window._currentUpdateCaseControls(
+        window.currentActivePrediction.case_id,
+        window.currentActivePrediction.case_status,
+        window.currentActivePrediction._dispatch,
+        window.currentActivePrediction._outcome
+      );
+    }
   }
 }
 
@@ -2021,6 +2318,7 @@ async function loadInvestigatorQueue() {
   if (!select) return;
   try {
     const cases = await API.getCases({ limit: 30 });
+    const currentVal = select.value;
     select.innerHTML = '<option value="">-- Select Incoming Case from Queue --</option>';
     if (cases && cases.length > 0) {
       cases.forEach((c) => {
@@ -2028,6 +2326,7 @@ async function loadInvestigatorQueue() {
         opt.value = c.case_id;
         const statusClean = (c.case_status || "NEW_ALERT").replace(/_/g, " ");
         opt.textContent = `${c.case_id} | ${statusClean} | Target: ${c.predicted_atm_id || "ATM"} (${c.priority_level || "MED"})`;
+        if (c.case_id === currentVal) opt.selected = true;
         select.appendChild(opt);
       });
     } else {

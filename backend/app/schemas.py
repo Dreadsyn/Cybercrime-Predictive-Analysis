@@ -303,6 +303,10 @@ class CaseResponse(BaseModel):
     has_outcome: Optional[bool] = False
     outcome_status: Optional[str] = None
     next_valid_action: Optional[str] = "DISPATCH_PATROL"
+    confidence_score: Optional[float] = 0.15
+    top_candidates: List[Dict[str, Any]] = Field(default_factory=list)
+    explanation_codes: List[str] = Field(default_factory=list)
+    priority_reasons: List[str] = Field(default_factory=list)
 
 
 class CaseStatusUpdateRequest(BaseModel):

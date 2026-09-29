@@ -267,8 +267,8 @@
         <div class="placeholder-icon">
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         </div>
-        <div class="placeholder-title">Awaiting Incident Complaint Intake</div>
-        <div class="placeholder-subtitle">
+        <div class="placeholder-title" id="forecastPlaceholderTitle">Awaiting Incident Complaint Intake</div>
+        <div class="placeholder-subtitle" id="forecastPlaceholderText">
           Select an operational scenario preset above or submit complaint parameters to trigger calibrated spatial forecasting, tactical triage, and field patrol routing.
         </div>
         <div class="placeholder-chips">
@@ -352,7 +352,7 @@
           <!-- Citizen Case Tracking Notice (Visible in Case Reporting Console) -->
           <div id="citizenTrackingNotice" class="citizen-tracking-notice" style="display:none;">
             <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            <span>Complaint Logged &bull; Field patrol dispatch and operational interdiction are handled by law enforcement officers.</span>
+            <span id="citizenTrackingText">Complaint Logged &bull; Field patrol dispatch and operational interdiction are handled by law enforcement officers.</span>
           </div>
         </div>
 
@@ -453,8 +453,8 @@
         <details id="playbookCard" class="intel-accordion" open>
           <summary class="intel-summary">
             <div class="summary-left">
-              <span class="sop-tag">SOP</span>
-              <span class="summary-title">Tactical Action Playbook</span>
+              <span class="sop-tag" id="playbookTag">SOP</span>
+              <span class="summary-title" id="playbookTitle">Tactical Action Playbook</span>
               <span id="playbookDispositionBadge" class="playbook-disposition-tag">TACTICAL INTERCEPTION</span>
             </div>
             <span class="summary-toggle-hint">Toggle Checklist</span>

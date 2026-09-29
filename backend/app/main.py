@@ -490,12 +490,32 @@ def list_predictions(limit: int = Query(25, ge=1, le=100)):
 # ==============================================================================
 # 5. OPERATIONAL CASE LIFECYCLE MANAGEMENT ENDPOINTS
 # ==============================================================================
+def require_investigator_role(
+    x_app_role: Optional[str] = Header(None, alias="X-App-Role"),
+    role: Optional[str] = Query(None),
+) -> str:
+    """
+    Enforces role-based console access for operational actions.
+    Case Reporting / Citizen role is restricted to complaint intake, prediction viewing,
+    and tracking their specific case. Operational dispatches, evidence exports, queue
+    listing, and outcome modifications require the 'investigator' or 'operations' role.
+    """
+    current_role = (x_app_role or role or "investigator").strip().lower()
+    if current_role in ("reporting", "citizen", "user"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Case Reporting / User console is not authorized to execute operational investigator actions.",
+        )
+    return current_role
+
+
 @app.get("/api/cases", response_model=List[CaseResponse], tags=["Case Management"])
 def list_cases(
     status: Optional[str] = Query(None, description="Optional status filter: NEW_ALERT, PATROL_DISPATCHED, RESOLVED"),
     limit: int = Query(25, ge=1, le=100),
+    _role: str = Depends(require_investigator_role),
 ):
-    """Retrieves operational cases generated from predictive alerts."""
+    """Retrieves operational cases generated from predictive alerts. Restricted to investigator role."""
     actual_status = status if isinstance(status, str) else getattr(status, "default", None)
     if not isinstance(actual_status, str):
         actual_status = None
@@ -507,31 +527,12 @@ def list_cases(
 
 @app.get("/api/cases/{case_id}", response_model=CaseResponse, tags=["Case Management"])
 def get_case_details(case_id: str):
-    """Retrieves details of a specific operational case."""
+    """Retrieves details of a specific operational case (open for citizen tracking and investigator triage)."""
     with get_db_connection() as conn:
         case = get_case_by_id(conn, case_id)
     if not case:
         raise HTTPException(status_code=404, detail=f"Operational case '{case_id}' not found.")
     return case
-
-
-def require_investigator_role(
-    x_app_role: Optional[str] = Header(None, alias="X-App-Role"),
-    role: Optional[str] = Query(None),
-) -> str:
-    """
-    Enforces role-based console access for operational actions.
-    Case Reporting / Citizen role is restricted to complaint intake, prediction viewing,
-    and tracking. Operational dispatches, evidence exports, and outcome modifications
-    require the 'investigator' or 'operations' role.
-    """
-    current_role = (x_app_role or role or "investigator").strip().lower()
-    if current_role in ("reporting", "citizen", "user"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Forbidden: Case Reporting / User console is not authorized to execute operational investigator actions.",
-        )
-    return current_role
 
 
 @app.patch("/api/cases/{case_id}/status", response_model=CaseResponse, tags=["Case Management"])

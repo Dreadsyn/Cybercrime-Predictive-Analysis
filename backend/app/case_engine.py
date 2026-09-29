@@ -56,6 +56,38 @@ def get_case_by_id(db_conn: sqlite3.Connection, case_id: str) -> Optional[Dict[s
     d["has_outcome"] = bool(out_row)
     d["outcome_status"] = out_row[1] if out_row else None
 
+    # Check linked prediction record for candidates and explainability
+    pred_id = d.get("parent_alert_id")
+    cur.execute(
+        """
+        SELECT confidence_score, top_candidates_json, explanation_codes_json, priority_reasons_json
+        FROM predictions
+        WHERE prediction_id = ? OR case_id = ?
+        ORDER BY prediction_timestamp DESC LIMIT 1;
+        """,
+        (pred_id, case_id),
+    )
+    pred_row = cur.fetchone()
+    if pred_row:
+        d["confidence_score"] = float(pred_row[0]) if pred_row[0] is not None else 0.15
+        try:
+            d["top_candidates"] = json.loads(pred_row[1] or "[]")
+        except Exception:
+            d["top_candidates"] = []
+        try:
+            d["explanation_codes"] = json.loads(pred_row[2] or "[]")
+        except Exception:
+            d["explanation_codes"] = []
+        try:
+            d["priority_reasons"] = json.loads(pred_row[3] or "[]")
+        except Exception:
+            d["priority_reasons"] = []
+    else:
+        d["confidence_score"] = 0.15
+        d["top_candidates"] = []
+        d["explanation_codes"] = []
+        d["priority_reasons"] = []
+
     # Determine next valid primary action
     st = d.get("case_status", "NEW_ALERT")
     if st == "NEW_ALERT":
