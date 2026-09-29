@@ -376,6 +376,18 @@ def test_predict_endpoint_validation_error():
 
 def test_predictions_audit_log():
     """Verifies that generated predictions are persisted and queryable."""
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=85000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=35.0,
+        incident_hour=15,
+        incident_day_of_week=4,
+    )
+    predict_cashout_location(req)
     preds = list_predictions(limit=10)
     assert len(preds) >= 1
     assert "prediction_id" in preds[0]
@@ -845,18 +857,8 @@ def clean_alert_test_predictions():
     """Cleans up isolated test prediction, dispatch, outcome, and case records before and after each test."""
     clean_outcomes_sql = "DELETE FROM case_outcomes;"
     clean_dispatches_sql = "DELETE FROM patrol_dispatches;"
-    clean_cases_sql = """
-        DELETE FROM operational_cases 
-        WHERE parent_alert_id IN (
-            SELECT prediction_id FROM predictions
-            WHERE complaint_id != 'CMP-INIT-001'
-        )
-        OR complaint_id != 'CMP-INIT-001';
-    """
-    clean_sql = """
-        DELETE FROM predictions 
-        WHERE complaint_id != 'CMP-INIT-001';
-    """
+    clean_cases_sql = "DELETE FROM operational_cases;"
+    clean_sql = "DELETE FROM predictions;"
     with get_db_connection() as conn:
         conn.execute(clean_outcomes_sql)
         conn.execute(clean_dispatches_sql)
@@ -1221,6 +1223,18 @@ def test_expired_window_creates_new_alert():
 
 def test_list_predictions_includes_alert_lifecycle():
     """Verifies that GET /api/predictions history endpoint supplies alert lifecycle metadata."""
+    req = PredictionRequest(
+        crime_category="INVESTMENT_FRAUD",
+        reported_amount=85000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_SBI_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=35.0,
+        incident_hour=15,
+        incident_day_of_week=4,
+    )
+    predict_cashout_location(req)
     preds = list_predictions(limit=10)
     assert isinstance(preds, list)
     assert len(preds) > 0

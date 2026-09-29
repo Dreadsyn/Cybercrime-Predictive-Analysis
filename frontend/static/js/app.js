@@ -646,152 +646,200 @@ function renderRolePlaybook(result, role) {
   if (!playbookCard) return;
 
   if (role === "reporting") {
-    // Citizen Safety Guidance Playbook
+    // -------------------------------------------------------------------------
+    // CITIZEN / REPORTING CONSOLE: "What You Should Do Now"
+    // Short, victim-focused, exactly 3 immediate protection actions.
+    // NO patrol deployment, CCTV, ATM surveillance, or police ops.
+    // -------------------------------------------------------------------------
     playbookCard.style.display = "block";
-    if (playbookTag) playbookTag.innerText = "SAFETY";
+    if (playbookTag) {
+      playbookTag.innerText = "SAFETY";
+      playbookTag.style.background = "#eff6ff";
+      playbookTag.style.color = "#1d4ed8";
+    }
     if (playbookTitle) playbookTitle.innerText = "What You Should Do Now";
     if (playbookBadge) {
-      playbookBadge.innerText = "VICTIM SAFETY GUIDANCE";
+      playbookBadge.innerText = "PROTECT YOURSELF / SECURE ACCOUNT";
       playbookBadge.className = "playbook-disposition-tag tag-citizen";
     }
     if (playbookSummary) {
-      playbookSummary.innerText = "Emergency incident checklist: follow these steps immediately to mitigate financial loss and assist law enforcement.";
+      playbookSummary.className = "playbook-summary-banner banner-citizen";
+      playbookSummary.innerText = "Immediate victim protection: take these 3 steps immediately to secure your bank account and preserve evidence for law enforcement.";
     }
 
     const citizenSteps = [
       {
         step: 1,
-        urgency: "CRITICAL",
-        title: "Call National Cyber Helpline 1930",
-        target: "Helpline 1930",
-        description: "Immediately dial 1930 and report your incident reference number and bank account details for immediate national interdiction queueing.",
-        rationale: "Rapid reporting enables cyber cells to initiate inter-bank freeze protocols on mule accounts before cash-out.",
+        urgency: "IMMEDIATE",
+        stepBadge: "Step 1 · Immediate",
+        title: "Contact Bank to Freeze Account & Cards",
+        target: "Your Home Bank",
+        oneLineSummary: "Immediately call your bank to place an emergency debit freeze or stop-payment on the compromised account or cards.",
+        detail: "Contact your bank's 24/7 fraud reporting desk. Request an immediate freeze on all online transactions, UPI services, and debit cards linked to this account to prevent further withdrawals.",
       },
       {
         step: 2,
-        urgency: "IMMEDIATE",
-        title: "Request Originating Bank Lien / Freeze",
-        target: "Your Home Bank",
-        description: "Contact your bank's 24/7 fraud dispute desk. Provide the UPI / IMPS / NEFT transaction reference ID and demand an immediate stop-payment or debit lien.",
-        rationale: "Banks maintain 24/7 nodal liaison channels to hold funds in transit at destination accounts.",
+        urgency: "HIGH",
+        stepBadge: "Step 2 · Urgent",
+        title: "Report Unauthorized Transaction to Fraud Desk",
+        target: "Bank Fraud Helpline",
+        oneLineSummary: "Formally dispute unauthorized transactions with the transaction reference ID (UPI / IMPS / NEFT) to initiate inter-bank hold.",
+        detail: "Provide your bank with exact transaction timestamps, amounts, and dispute reference numbers. Ask the fraud team to notify the beneficiary bank's nodal officer to freeze incoming funds in transit.",
       },
       {
         step: 3,
-        urgency: "HIGH",
-        title: "Preserve Digital Transaction Evidence",
-        target: "Device Screenshots",
-        description: "Capture uncropped screenshots of transaction receipts, SMS debit notifications, caller phone numbers, and WhatsApp/Telegram chat logs.",
-        rationale: "Timestamped digital artifacts are mandatory evidence required by investigating cybercrime units.",
-      },
-      {
-        step: 4,
         urgency: "STANDARD",
-        title: "Save Case Tracking ID",
-        target: `Case ${result.case_id || 'Reference'}`,
-        description: "Keep note of your Case ID above. Monitor this console for real-time dispatch updates and official police outcome logging.",
-        rationale: "Law enforcement operations units receive real-time alerts linked directly to this case identifier.",
+        stepBadge: "Step 3 · Evidence",
+        title: "Preserve Transaction SMS & Screenshots as Evidence",
+        target: `Case Record: ${result.case_id || 'Reference'}`,
+        oneLineSummary: "Save debit SMS notifications, transaction receipts, bank statements, and chat records as official evidence for investigators.",
+        detail: "Retain uncropped digital proof including caller numbers, payment confirmation screens, and SMS timestamps. Investigating cybercrime units require these artifacts to link the fraudulent cash-out.",
       },
     ];
 
     if (playbookList) {
       playbookList.innerHTML = citizenSteps
+        .slice(0, 3)
         .map(action => `
-          <div class="playbook-action-card" id="action-step-${action.step}">
+          <div class="playbook-action-card compact" id="action-step-${action.step}">
             <div class="playbook-card-header">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span class="playbook-step-badge urgency-${action.urgency.toLowerCase()}">Step ${action.step} · ${action.urgency}</span>
+              <div class="playbook-header-left">
+                <span class="playbook-step-badge urgency-${action.urgency.toLowerCase()}">${escapeHtml(action.stepBadge)}</span>
                 <span class="playbook-action-title">${escapeHtml(action.title)}</span>
               </div>
-              <span class="playbook-action-target">${escapeHtml(action.target)}</span>
+              <span class="playbook-action-target target-citizen">${escapeHtml(action.target)}</span>
             </div>
-            <div class="playbook-action-desc">${escapeHtml(action.description)}</div>
-            <div class="playbook-action-rationale">&#8627; Purpose: ${escapeHtml(action.rationale)}</div>
-            <div class="playbook-action-footer">
-              <label class="playbook-checkbox-label">
-                <input type="checkbox" onchange="this.closest('.playbook-action-card').classList.toggle('completed', this.checked)">
-                <span>Completed</span>
-              </label>
-            </div>
+            <div class="playbook-action-desc">${escapeHtml(action.oneLineSummary)}</div>
+            <details class="playbook-action-expandable">
+              <summary class="playbook-expandable-summary">Details &amp; Rationale</summary>
+              <div class="playbook-expandable-content">${escapeHtml(action.detail)}</div>
+            </details>
           </div>
         `)
         .join("");
     }
 
     if (copyBtn) {
+      const text = document.getElementById("copyBriefText");
+      if (text) text.innerText = "Copy Citizen Guidance";
       copyBtn.onclick = async () => {
-        const textToCopy = `[CYBERCRIME REPORT REFERENCE] Case ID: ${result.case_id || '--'} | Target Sector: ${result.predicted_zone_id || '--'} | Status: ${result.case_status || 'NEW_ALERT'}\nEmergency Actions:\n1. Call 1930 Helpline immediately.\n2. Contact home bank for immediate transaction lien.\n3. Preserve all digital transaction screenshots.`;
+        const textToCopy = `[CYBERCRIME CITIZEN ADVISORY - CASE ${result.case_id || '--'}]\n1. Freeze Account: Contact bank immediately to freeze compromised accounts and cards.\n2. Report Fraud: Call official bank fraud helpline and register formal transaction dispute.\n3. Preserve Evidence: Save all debit SMS alerts, receipts, and communication logs.`;
         try {
           await navigator.clipboard.writeText(textToCopy);
           const iconSvg = document.getElementById("copyBriefIconSvg");
-          const text = document.getElementById("copyBriefText");
           if (iconSvg) iconSvg.innerHTML = `<polyline points="20 6 9 17 4 12"/>`;
           if (text) text.innerText = "Copied!";
           copyBtn.classList.add("copied");
-          showToast("Citizen case summary copied to clipboard!", "success");
+          showToast("Citizen safety guidance copied to clipboard!", "success");
           setTimeout(() => {
             if (iconSvg) iconSvg.innerHTML = `<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>`;
-            if (text) text.innerText = "Copy Reference";
+            if (text) text.innerText = "Copy Citizen Guidance";
             copyBtn.classList.remove("copied");
           }, 2500);
         } catch (e) {
-          showToast("Failed to copy reference: " + e.message, "error");
+          showToast("Failed to copy guidance: " + e.message, "error");
         }
       };
     }
   } else {
-    // Law Enforcement Tactical SOP Playbook
+    // -------------------------------------------------------------------------
+    // INVESTIGATOR / OPERATIONS CONSOLE: "Tactical Action Playbook"
+    // Short, operational law enforcement SOP, exactly 3 actions.
+    // NO bank freezing, OTP warnings, or citizen protection tasks.
+    // -------------------------------------------------------------------------
     playbookCard.style.display = "block";
-    if (playbookTag) playbookTag.innerText = "SOP";
+    if (playbookTag) {
+      playbookTag.innerText = "SOP";
+      playbookTag.style.background = "#f0fdfa";
+      playbookTag.style.color = "var(--accent-teal-dark)";
+    }
     if (playbookTitle) playbookTitle.innerText = "Tactical Action Playbook (Law Enforcement)";
     if (playbookBadge) {
-      playbookBadge.innerText = (result.playbook?.disposition || "TACTICAL INTERCEPTION").replace(/_/g, " ");
-      playbookBadge.className = "playbook-disposition-tag";
-    }
-    if (playbookSummary) {
-      playbookSummary.innerText = result.playbook?.summary || `Deploy nearest field unit to secure ${result.predicted_atm_id}; cordon cash-out corridor and preserve surveillance feeds.`;
+      playbookBadge.innerText = "RESPOND / INTERVENE / VERIFY OUTCOME";
+      playbookBadge.className = "playbook-disposition-tag tag-investigator";
     }
 
-    if (playbookList && Array.isArray(result.playbook?.actions)) {
-      playbookList.innerHTML = result.playbook.actions
-        .map(action => {
-          const urgencyClass = (action.urgency || "standard").toLowerCase();
-          return `
-            <div class="playbook-action-card" id="action-step-${action.step}">
-              <div class="playbook-card-header">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span class="playbook-step-badge urgency-${urgencyClass}">Step ${action.step} · ${action.urgency}</span>
-                  <span class="playbook-action-title">${escapeHtml(action.title)}</span>
-                </div>
-                <span class="playbook-action-target">${escapeHtml(action.target)}</span>
+    const predAtm = result.predicted_atm_id || "ATM";
+    const zoneName = (result.predicted_zone_id || "Zone").replace("ZONE_", "Zone ");
+    const winStr = (result.predicted_window_start && result.predicted_window_end)
+      ? `${result.predicted_window_start.substring(11, 16)} - ${result.predicted_window_end.substring(11, 16)} hrs`
+      : "Immediate 45-min Window";
+    const cands = (Array.isArray(result.top_candidates) && result.top_candidates.length > 1)
+      ? result.top_candidates.slice(1, 3).map(c => c.atm_id).join(", ")
+      : "adjacent sector terminals";
+
+    if (playbookSummary) {
+      playbookSummary.className = "playbook-summary-banner banner-investigator";
+      playbookSummary.innerText = `Tactical interdiction SOP: coordinate field patrol interdiction at ${predAtm} (${zoneName}), screen corridor candidates, and record verified outcome.`;
+    }
+
+    const investigatorSteps = [
+      {
+        step: 1,
+        urgency: "IMMEDIATE",
+        stepBadge: "Step 1 · Dispatch",
+        title: "Dispatch Field Patrol to Target ATM",
+        target: `${predAtm} (${zoneName})`,
+        oneLineSummary: `Position nearest mobile PCR / beat patrol at ${predAtm} within ${winStr} to interdict cash withdrawal runner.`,
+        detail: `Deploy sector unit to establish discreet visual perimeter around ${predAtm}. Monitor kiosk for individuals attempting multiple card withdrawals, wearing full helmets/masks, or loitering near terminal during ${winStr}.`,
+      },
+      {
+        step: 2,
+        urgency: "HIGH",
+        stepBadge: "Step 2 · Interdiction",
+        title: "Prioritize Target ATM & Screen Candidate Corridor",
+        target: `Corridor: ${cands}`,
+        oneLineSummary: `Monitor ${predAtm} and alert adjoining beat units to screen secondary ranked ATMs (${cands}) and review facility CCTV feeds.`,
+        detail: `If suspect runner encounters physical security at ${predAtm}, spatial convergence indicates immediate diversion to top cluster candidates (${cands}). Task beat staff to verify CCTV feeds and observe adjoining ATM perimeters.`,
+      },
+      {
+        step: 3,
+        urgency: "STANDARD",
+        stepBadge: "Step 3 · Outcome",
+        title: "Record Verified Field Outcome & Close Incident",
+        target: "Case Terminal Resolution",
+        oneLineSummary: "Log interdiction result (intercepted runner, no cash-out, or false alert) to lock audit log and finalize case lifecycle.",
+        detail: "Following field unit debrief, click 'Record Outcome' in the control bar above. Enter the verified actual ATM and operational remarks to lock evidence and transition case to CLOSED.",
+      },
+    ];
+
+    if (playbookList) {
+      playbookList.innerHTML = investigatorSteps
+        .slice(0, 3)
+        .map(action => `
+          <div class="playbook-action-card compact" id="action-step-${action.step}">
+            <div class="playbook-card-header">
+              <div class="playbook-header-left">
+                <span class="playbook-step-badge urgency-${action.urgency.toLowerCase()}">${escapeHtml(action.stepBadge)}</span>
+                <span class="playbook-action-title">${escapeHtml(action.title)}</span>
               </div>
-              <div class="playbook-action-desc">${escapeHtml(action.description)}</div>
-              <div class="playbook-action-rationale">&#8627; Rationale: ${escapeHtml(action.rationale)}</div>
-              <div class="playbook-action-footer">
-                <label class="playbook-checkbox-label">
-                  <input type="checkbox" onchange="this.closest('.playbook-action-card').classList.toggle('completed', this.checked)">
-                  <span>Mark Executed</span>
-                </label>
-              </div>
+              <span class="playbook-action-target">${escapeHtml(action.target)}</span>
             </div>
-          `;
-        })
+            <div class="playbook-action-desc">${escapeHtml(action.oneLineSummary)}</div>
+            <details class="playbook-action-expandable">
+              <summary class="playbook-expandable-summary">Details &amp; Rationale</summary>
+              <div class="playbook-expandable-content">${escapeHtml(action.detail)}</div>
+            </details>
+          </div>
+        `)
         .join("");
     }
 
     if (copyBtn) {
+      const text = document.getElementById("copyBriefText");
+      if (text) text.innerText = "Copy Tactical Brief";
       copyBtn.onclick = async () => {
-        const textToCopy = result.playbook?.dispatch_brief || result.playbook?.summary || "";
+        const textToCopy = `[TACTICAL SOP BRIEF] Case: ${result.case_id || '--'} | Priority: ${result.priority_level || 'MED'} (${result.priority_score || 0}/100)\nTarget ATM: ${predAtm} (${zoneName}) | Window: ${winStr}\n1. Dispatch patrol to ${predAtm} within operational window.\n2. Screen secondary cluster terminals (${cands}) & preserve CCTV.\n3. Log field debrief and record verified outcome.`;
         try {
           await navigator.clipboard.writeText(textToCopy);
           const iconSvg = document.getElementById("copyBriefIconSvg");
-          const text = document.getElementById("copyBriefText");
           if (iconSvg) iconSvg.innerHTML = `<polyline points="20 6 9 17 4 12"/>`;
           if (text) text.innerText = "Copied!";
           copyBtn.classList.add("copied");
           showToast("Tactical Dispatch Brief copied to clipboard!", "success");
           setTimeout(() => {
             if (iconSvg) iconSvg.innerHTML = `<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>`;
-            if (text) text.innerText = "Copy Brief";
+            if (text) text.innerText = "Copy Tactical Brief";
             copyBtn.classList.remove("copied");
           }, 2500);
         } catch (e) {
@@ -1212,13 +1260,13 @@ function renderPredictionResult(result) {
         ? "Case resolution finalized by law enforcement. View official case outcome details below."
         : "Operational response concluded. Outcome recorded and case closed. Review resolution audit report below.";
     } else if (getActiveRole() === "reporting") {
-      heroActionEl.innerText = "Citizen Advisory: Follow emergency guidance below. Call National Cyber Helpline 1930 and request an immediate transaction lien with your bank.";
-    } else if (result.playbook && result.playbook.summary) {
-      heroActionEl.innerText = result.playbook.summary;
-    } else if (result.playbook && Array.isArray(result.playbook.actions) && result.playbook.actions.length > 0) {
-      heroActionEl.innerText = `${result.playbook.actions[0].title}: ${result.playbook.actions[0].description}`;
+      heroActionEl.innerText = "Citizen Guidance: Protect yourself & secure your account. Contact your bank immediately to freeze compromised cards/accounts and preserve evidence.";
     } else {
-      heroActionEl.innerText = `Dispatch nearest patrol to secure ${result.predicted_atm_id} in ${result.predicted_zone_id.replace("ZONE_", "Zone ")}; verify CCTV feeds and monitor cash-out corridor.`;
+      const predAtm = result.predicted_atm_id || "target ATM";
+      const winStr = (result.predicted_window_start && result.predicted_window_end)
+        ? `${result.predicted_window_start.substring(11, 16)} - ${result.predicted_window_end.substring(11, 16)} hrs`
+        : "operational window";
+      heroActionEl.innerText = `Tactical Directive: Respond, intervene & verify outcome. Dispatch field patrol to secure ${predAtm} within ${winStr}.`;
     }
   }
 
@@ -2573,9 +2621,27 @@ export async function applyConsoleMode(role) {
     }
   }
 
-  // Update controls and playbook for active prediction
+  // Update controls, playbook, and hero directive for active prediction
   if (window.currentActivePrediction) {
     renderRolePlaybook(window.currentActivePrediction, role);
+    const heroActionEl = document.getElementById("heroActionDirective");
+    if (heroActionEl) {
+      const pred = window.currentActivePrediction;
+      const isClosed = (pred.case_status === "RESOLVED" || pred.case_status === "CLOSED");
+      if (isClosed) {
+        heroActionEl.innerText = (role === "reporting")
+          ? "Case resolution finalized by law enforcement. View official case outcome details below."
+          : "Operational response concluded. Outcome recorded and case closed. Review resolution audit report below.";
+      } else if (role === "reporting") {
+        heroActionEl.innerText = "Citizen Guidance: Protect yourself & secure your account. Contact your bank immediately to freeze compromised cards/accounts and preserve evidence.";
+      } else {
+        const predAtm = pred.predicted_atm_id || "target ATM";
+        const winStr = (pred.predicted_window_start && pred.predicted_window_end)
+          ? `${pred.predicted_window_start.substring(11, 16)} - ${pred.predicted_window_end.substring(11, 16)} hrs`
+          : "operational window";
+        heroActionEl.innerText = `Tactical Directive: Respond, intervene & verify outcome. Dispatch field patrol to secure ${predAtm} within ${winStr}.`;
+      }
+    }
     if (window._currentUpdateCaseControls) {
       window._currentUpdateCaseControls(
         window.currentActivePrediction.case_id,

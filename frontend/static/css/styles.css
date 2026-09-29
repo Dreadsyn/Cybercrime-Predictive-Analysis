@@ -1527,6 +1527,18 @@ body {
   border: 1px solid var(--accent-teal-border);
 }
 
+.playbook-disposition-tag.tag-citizen {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.playbook-disposition-tag.tag-investigator {
+  background: #f0fdfa;
+  color: var(--accent-teal-dark);
+  border: 1px solid var(--accent-teal-border);
+}
+
 .playbook-summary-banner {
   font-size: 0.72rem;
   color: var(--text-muted);
@@ -1538,11 +1550,23 @@ body {
   line-height: 1.4;
 }
 
+.playbook-summary-banner.banner-citizen {
+  border-left-color: #2563eb;
+  background: #eff6ff55;
+  color: #1e3a8a;
+}
+
+.playbook-summary-banner.banner-investigator {
+  border-left-color: var(--accent-teal);
+  background: #f0fdfa55;
+  color: #0f766e;
+}
+
 .playbook-actions-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 240px;
+  max-height: 280px;
   overflow-y: auto;
 }
 
@@ -1553,11 +1577,32 @@ body {
   padding: 6px 8px;
 }
 
+.playbook-action-card.compact {
+  padding: 6px 10px;
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  transition: all 0.15s ease;
+}
+
+.playbook-action-card.compact:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
 .playbook-card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 3px;
+  gap: 8px;
+}
+
+.playbook-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .playbook-step-badge {
@@ -1566,6 +1611,7 @@ body {
   padding: 1px 5px;
   border-radius: 3px;
   text-transform: uppercase;
+  flex-shrink: 0;
 }
 
 .urgency-immediate {
@@ -1587,9 +1633,12 @@ body {
 }
 
 .playbook-action-title {
-  font-size: 0.72rem;
+  font-size: 0.73rem;
   font-weight: 700;
   color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .playbook-action-target {
@@ -1597,39 +1646,49 @@ body {
   font-family: monospace;
   font-weight: 700;
   color: var(--accent-teal-dark);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.playbook-action-target.target-citizen {
+  color: #2563eb;
 }
 
 .playbook-action-desc {
-  font-size: 0.7rem;
+  font-size: 0.69rem;
   color: var(--text-muted);
-  margin-bottom: 3px;
+  margin-bottom: 2px;
   line-height: 1.35;
 }
 
-.playbook-action-rationale {
-  font-size: 0.66rem;
+.playbook-action-expandable {
+  margin-top: 3px;
+}
+
+.playbook-expandable-summary {
+  font-size: 0.63rem;
+  font-weight: 600;
   color: var(--text-dim);
-  font-style: italic;
-  margin-bottom: 4px;
-}
-
-.playbook-action-footer {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.playbook-checkbox-label {
+  cursor: pointer;
+  user-select: none;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 0.66rem;
-  color: var(--text-dim);
-  cursor: pointer;
 }
 
-.playbook-action-card.completed {
-  opacity: 0.55;
+.playbook-expandable-summary:hover {
+  color: var(--accent-blue);
+}
+
+.playbook-expandable-content {
+  font-size: 0.67rem;
+  color: var(--text-muted);
   background: #f8fafc;
+  border-left: 2px solid #cbd5e1;
+  padding: 4px 8px;
+  margin-top: 3px;
+  border-radius: 0 3px 3px 0;
+  line-height: 1.35;
 }
 
 /* Why this prediction? */
