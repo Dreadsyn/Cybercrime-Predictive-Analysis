@@ -333,9 +333,15 @@ function setupFormListeners() {
       const result = await API.predict(payload);
       if (result.case_id) {
         sessionStorage.removeItem("citizen_workspace_state");
+        sessionStorage.removeItem("citizen_view_mode");
         sessionStorage.setItem("citizen_active_case_id", result.case_id);
         startCitizenPolling(result.case_id);
       }
+      const histBanner = document.getElementById("historicalCaseBanner");
+      if (histBanner) histBanner.style.display = "none";
+      const intakeSection = document.getElementById("intakeFormSection");
+      if (intakeSection) intakeSection.style.display = "block";
+
       renderPredictionResult(result);
       MapController.highlightPrediction(result.predicted_atm_id, result.top_candidates);
 
@@ -518,8 +524,16 @@ function renderFinalResolutionSection(result, role) {
             <span class="res-value" style="color: #10b981; font-weight: 800;">CLOSED</span>
           </div>
           <div class="res-cell">
+            <span class="res-label">Actual Outcome</span>
+            <span class="res-value" style="font-weight: 700;">${escapeHtml(outDetails.title)}</span>
+          </div>
+          <div class="res-cell">
             <span class="res-label">Target ATM</span>
             <span class="res-value font-mono">${escapeHtml(result.predicted_atm_id || '--')}</span>
+          </div>
+          <div class="res-cell">
+            <span class="res-label">Actual Location</span>
+            <span class="res-value font-mono">${escapeHtml(outDetails.actualAtmText)}</span>
           </div>
           <div class="res-cell">
             <span class="res-label">Target Sector</span>
@@ -538,16 +552,11 @@ function renderFinalResolutionSection(result, role) {
             <span class="res-value">${escapeHtml(outDetails.spatialHitText)}</span>
           </div>
         </div>
-        <div class="resolution-footer-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div class="resolution-footer-note">
           <span>Law enforcement response concluded for Case ID: <b class="font-mono">${escapeHtml(result.case_id)}</b>. No further citizen action required.</span>
-          <button type="button" id="btnResolutionNewReport" class="btn-op-secondary" style="font-size:0.72rem; padding: 3px 8px; cursor: pointer; white-space:nowrap;">Report New Case</button>
         </div>
       </div>
     `;
-    const resNewBtn = resolutionSec.querySelector("#btnResolutionNewReport");
-    if (resNewBtn) {
-      resNewBtn.addEventListener("click", () => resetReportingWorkspace(true));
-    }
   } else {
     // Investigator Console: Richer Final Resolution Audit Report
     const actions = (result.playbook && Array.isArray(result.playbook.actions)) ? result.playbook.actions : [
@@ -1002,6 +1011,38 @@ function renderPredictionResult(result) {
 
     renderRolePlaybook(result, role);
 
+    // Dynamic hero immediate action update across role and lifecycle
+    const heroActionEl = document.getElementById("heroActionDirective");
+    if (heroActionEl) {
+      const isClosed = (status === "RESOLVED" || status === "CLOSED");
+      if (isClosed) {
+        heroActionEl.innerText = (role === "reporting")
+          ? "Case resolution finalized by law enforcement. View official case outcome details below."
+          : "Operational response concluded. Outcome recorded and case closed. Review resolution audit report below.";
+      } else if (role === "reporting") {
+        if (status === "PATROL_DISPATCHED") {
+          heroActionEl.innerText = "Law Enforcement Update: Active patrol unit dispatched to secure predicted cash-out corridor. Law enforcement is responding.";
+        } else if (status === "OUTCOME_PENDING") {
+          heroActionEl.innerText = "Law Enforcement Update: Patrol on-scene at cash-out zone • Interdiction operation in progress.";
+        } else {
+          heroActionEl.innerText = "Citizen Guidance: Protect yourself & secure your account. Contact your bank immediately to freeze compromised cards/accounts and preserve evidence.";
+        }
+      } else {
+        const predAtm = result.predicted_atm_id || "target ATM";
+        const winStr = (result.predicted_window_start && result.predicted_window_end)
+          ? `${result.predicted_window_start.substring(11, 16)} - ${result.predicted_window_end.substring(11, 16)} hrs`
+          : "operational window";
+        heroActionEl.innerText = `Tactical Directive: Respond, intervene & verify outcome. Dispatch field patrol to secure ${predAtm} within ${winStr}.`;
+      }
+    }
+
+    // Advance workflow ribbon to match operational case state
+    if (status === "PATROL_DISPATCHED" || status === "OUTCOME_PENDING") {
+      setWorkflowStep(6);
+    } else if (status === "RESOLVED" || status === "CLOSED") {
+      setWorkflowStep(7);
+    }
+
     if (caseIdBadge) {
       if (caseId) {
         caseIdBadge.innerText = caseId;
@@ -1307,12 +1348,6 @@ function renderPredictionResult(result) {
     };
   }
 
-  // Show "Report New Case" button in hero header for Citizen Console
-  const btnReportHero = document.getElementById("btnReportNewCaseHero");
-  if (btnReportHero) {
-    btnReportHero.style.display = (getActiveRole() === "reporting") ? "inline-flex" : "none";
-  }
-
   // Role-appropriate Action Playbook (Citizen Safety Guidance vs Police Tactical SOP)
   renderRolePlaybook(result, getActiveRole());
 
@@ -1414,7 +1449,8 @@ function renderAlertHistory(predictions) {
       } else {
         sessionStorage.removeItem("citizen_workspace_state");
         sessionStorage.setItem("citizen_active_case_id", cid);
-        await loadCitizenCase(cid);
+        sessionStorage.setItem("citizen_view_mode", "historical");
+        await loadCitizenCase(cid, true);
         startCitizenPolling(cid);
       }
     });
@@ -2496,7 +2532,8 @@ function startCitizenPolling(caseId) {
           window._currentUpdateCaseControls(caseId, c.case_status, disp, out);
         }
       } else {
-        await loadCitizenCase(caseId);
+        const isHist = sessionStorage.getItem("citizen_view_mode") === "historical";
+        await loadCitizenCase(caseId, isHist);
       }
 
       if (c.case_status === "RESOLVED" || c.case_status === "CLOSED") {
@@ -2510,9 +2547,9 @@ function startCitizenPolling(caseId) {
 }
 
 /**
- * Loads and renders a citizen's active reported case.
+ * Loads and renders a citizen's active reported case or read-only historical case.
  */
-async function loadCitizenCase(caseId) {
+async function loadCitizenCase(caseId, isHistorical = false) {
   if (!caseId) return;
   try {
     const c = await API.getCase(caseId);
@@ -2522,6 +2559,19 @@ async function loadCitizenCase(caseId) {
     let out = null;
     try { disp = await API.getCaseDispatch(caseId); } catch {}
     try { out = await API.getCaseOutcome(caseId); } catch {}
+
+    const intakeSection = document.getElementById("intakeFormSection");
+    const histBanner = document.getElementById("historicalCaseBanner");
+    const histIdDisplay = document.getElementById("historicalCaseIdDisplay");
+
+    if (isHistorical) {
+      if (intakeSection) intakeSection.style.display = "none";
+      if (histBanner) histBanner.style.display = "flex";
+      if (histIdDisplay) histIdDisplay.innerText = caseId;
+    } else {
+      if (intakeSection && getActiveRole() === "reporting") intakeSection.style.display = "block";
+      if (histBanner) histBanner.style.display = "none";
+    }
 
     const predObj = {
       case_id: c.case_id,
@@ -2557,6 +2607,7 @@ async function loadCitizenCase(caseId) {
 export function resetReportingWorkspace(showToastMessage = true) {
   // 1. Clear citizen session storage state
   sessionStorage.removeItem("citizen_active_case_id");
+  sessionStorage.removeItem("citizen_view_mode");
   sessionStorage.setItem("citizen_workspace_state", "new");
 
   // 2. Stop live polling for citizen case updates
@@ -2571,7 +2622,16 @@ export function resetReportingWorkspace(showToastMessage = true) {
   // 4. Reset workflow ribbon back to Step 1: Complaint Intake
   setWorkflowStep(1);
 
-  // 5. Reset complaint intake form to genuinely blank state
+  // 5. Hide historical banner and show intake form in reporting console
+  const histBanner = document.getElementById("historicalCaseBanner");
+  if (histBanner) histBanner.style.display = "none";
+
+  const intakeSection = document.getElementById("intakeFormSection");
+  if (intakeSection && getActiveRole() === "reporting") {
+    intakeSection.style.display = "block";
+  }
+
+  // 6. Reset complaint intake form to genuinely blank state
   const form = document.getElementById("predictionForm");
   if (form) {
     form.reset();
@@ -2596,7 +2656,7 @@ export function resetReportingWorkspace(showToastMessage = true) {
     el.classList.remove("input-invalid");
   });
 
-  // 6. Hide prediction / outcome cards and show empty intake placeholder
+  // 7. Hide prediction / outcome cards and show empty intake placeholder
   const forecastCard = document.getElementById("forecastCard");
   const placeholderCard = document.getElementById("forecastCardPlaceholder");
   const finalOutcomeCard = document.getElementById("heroFinalOutcomeRecord");
@@ -2614,7 +2674,7 @@ export function resetReportingWorkspace(showToastMessage = true) {
   if (playbookCard) playbookCard.style.display = "none";
   if (citizenNotice) citizenNotice.style.display = "none";
 
-  // 7. Reset all hero telemetry badges and action buttons
+  // 8. Reset all hero telemetry badges and action buttons
   const predCaseIdBadge = document.getElementById("predCaseIdBadge");
   const predCaseStatusBadge = document.getElementById("predCaseStatusBadge");
   const predDispatchBadge = document.getElementById("predDispatchBadge");
@@ -2622,7 +2682,6 @@ export function resetReportingWorkspace(showToastMessage = true) {
   const predPriorityBadge = document.getElementById("predPriorityBadge");
   const predPriorityScore = document.getElementById("predPriorityScore");
   const predAlertStateBadge = document.getElementById("predAlertStateBadge");
-  const btnReportHero = document.getElementById("btnReportNewCaseHero");
 
   if (predCaseIdBadge) { predCaseIdBadge.style.display = "none"; predCaseIdBadge.innerText = ""; }
   if (predCaseStatusBadge) { predCaseStatusBadge.style.display = "none"; predCaseStatusBadge.innerText = ""; }
@@ -2631,20 +2690,19 @@ export function resetReportingWorkspace(showToastMessage = true) {
   if (predPriorityBadge) { predPriorityBadge.innerText = "--"; predPriorityBadge.className = "priority-tag"; }
   if (predPriorityScore) predPriorityScore.innerText = "--";
   if (predAlertStateBadge) predAlertStateBadge.style.display = "none";
-  if (btnReportHero) btnReportHero.style.display = "none";
 
   const heroActionEl = document.getElementById("heroActionDirective");
   if (heroActionEl) {
     heroActionEl.innerText = "Citizen Guidance: Protect yourself & secure your account. Contact your bank immediately to freeze compromised cards/accounts and preserve evidence.";
   }
 
-  // 8. Clear candidate table and explanation pills
+  // 9. Clear candidate table and explanation pills
   const tbody = document.getElementById("candidateTableBody");
   if (tbody) tbody.innerHTML = "";
   const reasonsContainer = document.getElementById("predReasons");
   if (reasonsContainer) reasonsContainer.innerHTML = "";
 
-  // 9. Clear map prediction highlights and candidate badges
+  // 10. Clear map prediction highlights and candidate badges
   if (MapController && typeof MapController.clearPredictionHighlight === "function") {
     MapController.clearPredictionHighlight();
   }
@@ -2658,22 +2716,14 @@ export function resetReportingWorkspace(showToastMessage = true) {
  * Attaches event listeners to all Report New Case / Reset workspace buttons.
  */
 export function setupWorkspaceResetListeners() {
-  const btnReportHero = document.getElementById("btnReportNewCaseHero");
   const btnReportIntake = document.getElementById("btnReportNewCaseIntake");
-  const btnCitizenReportNew = document.getElementById("btnCitizenReportNew");
-  const btnFinalOutcomeNewReport = document.getElementById("btnFinalOutcomeNewReport");
+  const btnExitHist = document.getElementById("btnExitHistoricalView");
 
-  if (btnReportHero) {
-    btnReportHero.addEventListener("click", () => resetReportingWorkspace(true));
-  }
   if (btnReportIntake) {
     btnReportIntake.addEventListener("click", () => resetReportingWorkspace(true));
   }
-  if (btnCitizenReportNew) {
-    btnCitizenReportNew.addEventListener("click", () => resetReportingWorkspace(true));
-  }
-  if (btnFinalOutcomeNewReport) {
-    btnFinalOutcomeNewReport.addEventListener("click", () => resetReportingWorkspace(true));
+  if (btnExitHist) {
+    btnExitHist.addEventListener("click", () => resetReportingWorkspace(true));
   }
 }
 
@@ -2714,6 +2764,8 @@ export async function applyConsoleMode(role) {
     if (queueSection) queueSection.style.display = "block";
     // Investigator never sees complaint intake or Run Predictive Forecast button
     if (intakeSection) intakeSection.style.display = "none";
+    const histBanner = document.getElementById("historicalCaseBanner");
+    if (histBanner) histBanner.style.display = "none";
 
     if (citizenNotice) citizenNotice.style.display = "none";
 
@@ -2768,11 +2820,15 @@ export async function applyConsoleMode(role) {
       if (defaultTabBtn) defaultTabBtn.click();
     }
 
-    // Citizen tracks their own active case
+    // Citizen tracks their own active case or inspects historical case
     const workspaceState = sessionStorage.getItem("citizen_workspace_state");
     const savedCitizenCaseId = sessionStorage.getItem("citizen_active_case_id");
+    const citizenViewMode = sessionStorage.getItem("citizen_view_mode");
 
-    if (workspaceState === "new" || !savedCitizenCaseId) {
+    if (citizenViewMode === "historical" && savedCitizenCaseId) {
+      await loadCitizenCase(savedCitizenCaseId, true);
+      startCitizenPolling(savedCitizenCaseId);
+    } else if (workspaceState === "new" || !savedCitizenCaseId) {
       resetReportingWorkspace(false);
     } else {
       try {
@@ -2784,7 +2840,7 @@ export async function applyConsoleMode(role) {
           resetReportingWorkspace(false);
         } else if (c) {
           // In-progress active case: restore and poll
-          await loadCitizenCase(savedCitizenCaseId);
+          await loadCitizenCase(savedCitizenCaseId, false);
           startCitizenPolling(savedCitizenCaseId);
         } else {
           resetReportingWorkspace(false);

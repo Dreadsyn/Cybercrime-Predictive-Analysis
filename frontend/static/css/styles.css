@@ -2933,3 +2933,44 @@ body {
   }
 }
 
+/* ==============================================================================
+   8. Historical Case Inspection Banner (Citizen Console)
+   ============================================================================== */
+.historical-case-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--accent-blue);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.historical-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.historical-tag {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #bae6fd;
+}
+
+.historical-desc {
+  font-size: 0.78rem;
+  color: var(--text-main);
+}
+
+

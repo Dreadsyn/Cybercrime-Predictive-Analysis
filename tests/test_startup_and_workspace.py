@@ -194,17 +194,21 @@ def test_case_lifecycle_and_backend_persistence():
 def test_frontend_workspace_reset_and_markup_contracts():
     """
     Verifies that the static frontend files have the required controls and implementations
-    for Issue 2 (workspace reset, placeholder inputs, clearPredictionHighlight).
+    for Issue 1 (historical case read-only view isolation) and Issue 2 (clean citizen updates).
     """
     base_dir = Path(__file__).resolve().parent.parent
 
     # 1. Verify index.html controls
     index_html = (base_dir / "frontend" / "index.html").read_text(encoding="utf-8")
-    assert 'id="btnReportNewCaseHero"' in index_html, "Hero header must have Report New Case button"
     assert 'id="btnReportNewCaseIntake"' in index_html, "Intake header must have Report New Case button"
-    assert 'id="btnCitizenReportNew"' in index_html, "Citizen tracking notice must have Report New Case button"
-    assert 'id="btnFinalOutcomeNewReport"' in index_html, "Final outcome report must have Report New Incident button"
+    assert 'id="historicalCaseBanner"' in index_html, "Citizen console must have historical case inspection banner"
+    assert 'id="btnExitHistoricalView"' in index_html, "Historical banner must have return to reporting button"
     assert 'placeholder="e.g. 85000"' in index_html, "Intake amount must use blank placeholder"
+
+    # Issue 1 Isolation: Nested "Report New Case" buttons must NOT exist inside case cards or details
+    assert 'id="btnReportNewCaseHero"' not in index_html, "Hero header must not have nested Report New Case button"
+    assert 'id="btnCitizenReportNew"' not in index_html, "Citizen tracking notice must not have nested Report New Case button"
+    assert 'id="btnFinalOutcomeNewReport"' not in index_html, "Final outcome record must not have nested Report New Incident button"
 
     # 2. Verify map.js clearPredictionHighlight method
     map_js = (base_dir / "frontend" / "static" / "js" / "map.js").read_text(encoding="utf-8")
@@ -215,7 +219,64 @@ def test_frontend_workspace_reset_and_markup_contracts():
     assert "export function resetReportingWorkspace" in app_js, "app.js must export resetReportingWorkspace"
     assert "setupWorkspaceResetListeners" in app_js, "app.js must implement setupWorkspaceResetListeners"
     assert "citizen_workspace_state" in app_js, "app.js must separate active workspace state from history"
-    assert "btnResolutionNewReport" in app_js, "app.js must bind resolution new report button"
+    assert "citizen_view_mode" in app_js, "app.js must track historical view mode"
+    assert "btnResolutionNewReport" not in app_js, "Resolution card must not contain nested report new case button"
+
+
+def test_citizen_live_update_and_historical_outcome_fidelity():
+    """
+    Verifies backend lifecycle contracts supporting Citizen Console Issue 2:
+    1. Case dispatches trigger PATROL_DISPATCHED state with field unit details.
+    2. Case resolution records persistent final outcome with distinct actual vs predicted ATM.
+    3. Outcomes like NO_CASHOUT, FALSE_ALERT, and INTERCEPTED preserve truth accuracy.
+    """
+    req = PredictionRequest(
+        crime_category="PHISHING_UPI",
+        reported_amount=42000.0,
+        payment_channel="UPI",
+        mule_bank_code="BANK_ICIC_SYNTH",
+        mule_account_tier="NEW_DIGITAL",
+        mule_branch_zone="ZONE_WEST",
+        reporting_delay_mins=15.0,
+        incident_hour=11,
+        incident_day_of_week=4,
+    )
+    pred = predict_cashout_location(req)
+    case_id = pred["case_id"]
+    predicted_atm = pred["predicted_atm_id"]
+
+    # Initial state
+    c_init = get_case_details(case_id)
+    assert c_init["case_status"] == "NEW_ALERT"
+
+    # Investigator dispatches patrol -> PATROL_DISPATCHED
+    disp = dispatch_patrol_endpoint(
+        case_id=case_id,
+        request=DispatchCreateRequest(patrol_unit="PCR-WEST-02", notes="Immediate interdiction corridor"),
+        _role=require_investigator_role(x_app_role="investigator"),
+    )
+    assert disp["dispatch_status"] == "DISPATCHED"
+    c_disp = get_case_details(case_id)
+    assert c_disp["case_status"] == "PATROL_DISPATCHED"
+
+    # Investigator records final outcome (e.g. NO_CASHOUT)
+    out = record_case_outcome_endpoint(
+        case_id=case_id,
+        request=CaseOutcomeCreateRequest(
+            outcome_status="NO_CASHOUT",
+            notes="Account lien executed. Zero unauthorized cashout confirmed.",
+            auto_resolve_case=True,
+        ),
+        _role=require_investigator_role(x_app_role="investigator"),
+    )
+    assert out["outcome_status"] == "NO_CASHOUT"
+    assert out["predicted_atm_id"] == predicted_atm
+    assert out["is_spatial_hit"] is False
+
+    # Closed case state for citizen polling
+    c_closed = get_case_details(case_id)
+    assert c_closed["case_status"] in ("RESOLVED", "CLOSED")
+    assert c_closed["predicted_atm_id"] == predicted_atm
 
 
 def test_health_and_docs_endpoints():
