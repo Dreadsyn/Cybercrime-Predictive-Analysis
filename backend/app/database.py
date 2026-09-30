@@ -61,11 +61,9 @@ def verify_database_readiness(conn) -> tuple[bool, str]:
         return False, "Database connection error or uninitialized database file."
 
 
-def ensure_db_schema():
+def ensure_db_schema(target_conn=None):
     """Ensures operational_cases, patrol_dispatches, and case_outcomes tables exist for backwards compatibility."""
-    if not DB_PATH.exists():
-        return
-    with get_db_connection() as conn:
+    def _apply_schema(conn):
         cur = conn.cursor()
         from backend.app.models import (
             SQL_CREATE_CASE_OUTCOMES,
@@ -100,6 +98,12 @@ def ensure_db_schema():
             if "case_status" not in existing_cols:
                 cur.execute("ALTER TABLE predictions ADD COLUMN case_status VARCHAR(30) DEFAULT 'NEW_ALERT';")
 
+    if target_conn is not None:
+        _apply_schema(target_conn)
+    else:
+        with get_db_connection() as conn:
+            _apply_schema(conn)
+
 
 def init_db():
     """Creates the SQLite database tables if they do not already exist."""
@@ -107,8 +111,42 @@ def init_db():
     with get_db_connection() as conn:
         for ddl in ALL_TABLE_DDL:
             conn.execute(ddl)
-    ensure_db_schema()
+        ensure_db_schema(target_conn=conn)
     print("  [OK] Table schemas verified.")
+
+
+def auto_init_database() -> bool:
+    """
+    Safely and idempotently initializes the SQLite database on application startup.
+    - If database file is missing or required operational tables are uninitialized,
+      executes table creation (init_db) and reference dataset population (seed_db).
+    - If database is already initialized with all operational tables, guarantees schema
+      migration compatibility without touching or re-seeding existing data.
+    """
+    needs_init = False
+    if not DB_PATH.exists():
+        needs_init = True
+    else:
+        try:
+            with get_db_connection() as conn:
+                is_ready, _ = verify_database_readiness(conn)
+                if not is_ready:
+                    needs_init = True
+        except Exception:
+            needs_init = True
+
+    if needs_init:
+        init_db()
+        seed_db()
+    else:
+        ensure_db_schema()
+
+    with get_db_connection() as conn:
+        is_ready, err = verify_database_readiness(conn)
+        if not is_ready:
+            raise RuntimeError(f"Database auto-initialization verification failed: {err}")
+    return True
+
 
 
 def seed_db():

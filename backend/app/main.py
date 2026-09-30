@@ -17,6 +17,7 @@ Provides:
 - GET  /api/model-info
 """
 
+from contextlib import asynccontextmanager
 import json
 import sys
 from pathlib import Path
@@ -35,7 +36,12 @@ sys.path.insert(0, str(BASE_DIR))
 from backend.app.analytics_engine import get_intervention_performance_analytics
 from backend.app.cluster_engine import detect_emerging_clusters
 from backend.app.convergence_engine import detect_repeated_convergence
-from backend.app.database import ensure_db_schema, get_db_connection, verify_database_readiness
+from backend.app.database import (
+    auto_init_database,
+    ensure_db_schema,
+    get_db_connection,
+    verify_database_readiness,
+)
 from backend.app.ml_engine import ml_engine
 from backend.app.playbook_engine import generate_investigator_playbook
 from backend.app.case_engine import (
@@ -80,15 +86,23 @@ from backend.app.schemas import (
     StatsResponse,
 )
 
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
+    """FastAPI startup lifecycle hook guaranteeing database readiness."""
+    auto_init_database()
+    yield
+
 # App instance
 app = FastAPI(
     title="Cybercrime Cash Withdrawal Predictive Analytics Framework",
     description="Forecast likely cybercrime cash withdrawal ATM locations in advance for proactive intervention.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
-# Ensure database schema is backwards-compatible on startup
-ensure_db_schema()
+# Automatically and safely initialize SQLite database and operational tables on startup
+auto_init_database()
+
 
 
 # ==============================================================================

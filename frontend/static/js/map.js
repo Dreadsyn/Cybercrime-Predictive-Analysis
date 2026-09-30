@@ -424,6 +424,32 @@ export const MapController = {
     this.selectATM(target.data, true);
   },
 
+  clearPredictionHighlight() {
+    if (targetHighlightLayer && mapInstance) {
+      mapInstance.removeLayer(targetHighlightLayer);
+      targetHighlightLayer = null;
+    }
+    if (mapInstance) {
+      mapInstance.closePopup();
+      mapInstance.flyTo([28.6300, 77.2000], 11, { duration: 0.8 });
+    }
+    const detailsRow = document.getElementById("selectedLocationDetails");
+    const centerBtn = document.getElementById("btnCenterSelectedAtm");
+    const advisoryEl = document.getElementById("selectedLocationAdvisory");
+    const idEl = document.getElementById("selAtmId");
+    const statusEl = document.getElementById("selAtmStatus");
+    if (detailsRow) detailsRow.style.display = "none";
+    if (centerBtn) centerBtn.style.display = "none";
+    if (advisoryEl) advisoryEl.style.display = "none";
+    if (idEl) idEl.innerText = "--";
+    if (statusEl) {
+      statusEl.className = "status-badge-online";
+      statusEl.innerText = "NONE SELECTED";
+    }
+    const selectEl = document.getElementById("quickAtmSelect");
+    if (selectEl) selectEl.value = "";
+  },
+
   focusLocation(lat, lon, zoom = 14) {
     if (mapInstance && lat && lon) {
       mapInstance.flyTo([lat, lon], zoom, { duration: 0.8 });

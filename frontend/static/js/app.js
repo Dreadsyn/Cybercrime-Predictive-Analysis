@@ -59,6 +59,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupConvergenceListeners();
   setupPerformanceListeners();
   setupConsoleSwitcher();
+  setupWorkspaceResetListeners();
 
   // Initialize Workflow Ribbon to Step 1: Complaint Intake
   setWorkflowStep(1);
@@ -331,6 +332,7 @@ function setupFormListeners() {
     try {
       const result = await API.predict(payload);
       if (result.case_id) {
+        sessionStorage.removeItem("citizen_workspace_state");
         sessionStorage.setItem("citizen_active_case_id", result.case_id);
         startCitizenPolling(result.case_id);
       }
@@ -536,11 +538,16 @@ function renderFinalResolutionSection(result, role) {
             <span class="res-value">${escapeHtml(outDetails.spatialHitText)}</span>
           </div>
         </div>
-        <div class="resolution-footer-note">
-          Law enforcement response concluded for Case ID: <b class="font-mono">${escapeHtml(result.case_id)}</b>. No further citizen action required.
+        <div class="resolution-footer-note" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <span>Law enforcement response concluded for Case ID: <b class="font-mono">${escapeHtml(result.case_id)}</b>. No further citizen action required.</span>
+          <button type="button" id="btnResolutionNewReport" class="btn-op-secondary" style="font-size:0.72rem; padding: 3px 8px; cursor: pointer; white-space:nowrap;">Report New Case</button>
         </div>
       </div>
     `;
+    const resNewBtn = resolutionSec.querySelector("#btnResolutionNewReport");
+    if (resNewBtn) {
+      resNewBtn.addEventListener("click", () => resetReportingWorkspace(true));
+    }
   } else {
     // Investigator Console: Richer Final Resolution Audit Report
     const actions = (result.playbook && Array.isArray(result.playbook.actions)) ? result.playbook.actions : [
@@ -626,6 +633,15 @@ function renderFinalResolutionSection(result, role) {
 function renderRolePlaybook(result, role) {
   const playbookCard = document.getElementById("playbookCard");
   const resolutionSec = document.getElementById("caseFinalResolutionSection");
+
+  if (!result) {
+    if (playbookCard) playbookCard.style.display = "none";
+    if (resolutionSec) {
+      resolutionSec.style.display = "none";
+      resolutionSec.innerHTML = "";
+    }
+    return;
+  }
 
   const isClosed = (result.case_status === "RESOLVED" || result.case_status === "CLOSED");
   if (isClosed) {
@@ -1291,6 +1307,12 @@ function renderPredictionResult(result) {
     };
   }
 
+  // Show "Report New Case" button in hero header for Citizen Console
+  const btnReportHero = document.getElementById("btnReportNewCaseHero");
+  if (btnReportHero) {
+    btnReportHero.style.display = (getActiveRole() === "reporting") ? "inline-flex" : "none";
+  }
+
   // Role-appropriate Action Playbook (Citizen Safety Guidance vs Police Tactical SOP)
   renderRolePlaybook(result, getActiveRole());
 
@@ -1365,7 +1387,7 @@ function renderAlertHistory(predictions) {
       const statusBadge = `<span class="case-status-badge status-${caseStatus.toLowerCase()}">${caseStatus}</span>`;
 
       return `
-      <tr>
+      <tr data-case-id="${escapeHtml(p.case_id || '')}" style="${p.case_id ? 'cursor: pointer;' : ''}" title="${p.case_id ? 'Click to inspect case ' + escapeHtml(p.case_id) : ''}">
         <td><small style="color: var(--text-muted); font-family: monospace;">${p.prediction_timestamp ? p.prediction_timestamp.substring(11, 19) : ""}</small></td>
         <td>${caseBadge}</td>
         <td><b style="color: var(--accent-blue);">${p.predicted_atm_id}</b></td>
@@ -1381,6 +1403,22 @@ function renderAlertHistory(predictions) {
     `;
     })
     .join("");
+
+  container.querySelectorAll("tr[data-case-id]").forEach(tr => {
+    const cid = tr.getAttribute("data-case-id");
+    if (!cid) return;
+    tr.addEventListener("click", async () => {
+      if (getActiveRole() === "investigator") {
+        markCaseReviewed(cid);
+        await loadCaseById(cid);
+      } else {
+        sessionStorage.removeItem("citizen_workspace_state");
+        sessionStorage.setItem("citizen_active_case_id", cid);
+        await loadCitizenCase(cid);
+        startCitizenPolling(cid);
+      }
+    });
+  });
 }
 
 /**
@@ -2512,6 +2550,134 @@ async function loadCitizenCase(caseId) {
 }
 
 /**
+ * Resets the active reporting workspace to a clean, blank intake state.
+ * Does NOT alter or delete any backend case history.
+ * Guarantees that refreshing in this blank state does not resurrect previous cases.
+ */
+export function resetReportingWorkspace(showToastMessage = true) {
+  // 1. Clear citizen session storage state
+  sessionStorage.removeItem("citizen_active_case_id");
+  sessionStorage.setItem("citizen_workspace_state", "new");
+
+  // 2. Stop live polling for citizen case updates
+  if (_citizenPollInterval) {
+    clearInterval(_citizenPollInterval);
+    _citizenPollInterval = null;
+  }
+
+  // 3. Clear active prediction state
+  window.currentActivePrediction = null;
+
+  // 4. Reset workflow ribbon back to Step 1: Complaint Intake
+  setWorkflowStep(1);
+
+  // 5. Reset complaint intake form to genuinely blank state
+  const form = document.getElementById("predictionForm");
+  if (form) {
+    form.reset();
+    if (form.elements["reported_amount"]) form.elements["reported_amount"].value = "";
+    if (form.elements["reporting_delay_mins"]) form.elements["reporting_delay_mins"].value = "";
+    if (form.elements["incident_hour"]) form.elements["incident_hour"].value = "";
+  }
+  document.querySelectorAll("[data-preset]").forEach(b => b.classList.remove("active"));
+
+  // Clear form errors
+  const generalErr = document.getElementById("formGeneralError");
+  if (generalErr) {
+    generalErr.style.display = "none";
+    const msgEl = generalErr.querySelector(".error-msg");
+    if (msgEl) msgEl.innerText = "";
+  }
+  document.querySelectorAll(".field-error").forEach(el => {
+    el.innerText = "";
+    el.classList.remove("active");
+  });
+  document.querySelectorAll(".input-invalid").forEach(el => {
+    el.classList.remove("input-invalid");
+  });
+
+  // 6. Hide prediction / outcome cards and show empty intake placeholder
+  const forecastCard = document.getElementById("forecastCard");
+  const placeholderCard = document.getElementById("forecastCardPlaceholder");
+  const finalOutcomeCard = document.getElementById("heroFinalOutcomeRecord");
+  const resolutionSec = document.getElementById("caseFinalResolutionSection");
+  const playbookCard = document.getElementById("playbookCard");
+  const citizenNotice = document.getElementById("citizenTrackingNotice");
+
+  if (forecastCard) forecastCard.style.display = "none";
+  if (placeholderCard) placeholderCard.style.display = "flex";
+  if (finalOutcomeCard) finalOutcomeCard.style.display = "none";
+  if (resolutionSec) {
+    resolutionSec.style.display = "none";
+    resolutionSec.innerHTML = "";
+  }
+  if (playbookCard) playbookCard.style.display = "none";
+  if (citizenNotice) citizenNotice.style.display = "none";
+
+  // 7. Reset all hero telemetry badges and action buttons
+  const predCaseIdBadge = document.getElementById("predCaseIdBadge");
+  const predCaseStatusBadge = document.getElementById("predCaseStatusBadge");
+  const predDispatchBadge = document.getElementById("predDispatchBadge");
+  const predOutcomeBadge = document.getElementById("predOutcomeBadge");
+  const predPriorityBadge = document.getElementById("predPriorityBadge");
+  const predPriorityScore = document.getElementById("predPriorityScore");
+  const predAlertStateBadge = document.getElementById("predAlertStateBadge");
+  const btnReportHero = document.getElementById("btnReportNewCaseHero");
+
+  if (predCaseIdBadge) { predCaseIdBadge.style.display = "none"; predCaseIdBadge.innerText = ""; }
+  if (predCaseStatusBadge) { predCaseStatusBadge.style.display = "none"; predCaseStatusBadge.innerText = ""; }
+  if (predDispatchBadge) { predDispatchBadge.style.display = "none"; predDispatchBadge.innerText = ""; }
+  if (predOutcomeBadge) { predOutcomeBadge.style.display = "none"; predOutcomeBadge.innerText = ""; }
+  if (predPriorityBadge) { predPriorityBadge.innerText = "--"; predPriorityBadge.className = "priority-tag"; }
+  if (predPriorityScore) predPriorityScore.innerText = "--";
+  if (predAlertStateBadge) predAlertStateBadge.style.display = "none";
+  if (btnReportHero) btnReportHero.style.display = "none";
+
+  const heroActionEl = document.getElementById("heroActionDirective");
+  if (heroActionEl) {
+    heroActionEl.innerText = "Citizen Guidance: Protect yourself & secure your account. Contact your bank immediately to freeze compromised cards/accounts and preserve evidence.";
+  }
+
+  // 8. Clear candidate table and explanation pills
+  const tbody = document.getElementById("candidateTableBody");
+  if (tbody) tbody.innerHTML = "";
+  const reasonsContainer = document.getElementById("predReasons");
+  if (reasonsContainer) reasonsContainer.innerHTML = "";
+
+  // 9. Clear map prediction highlights and candidate badges
+  if (MapController && typeof MapController.clearPredictionHighlight === "function") {
+    MapController.clearPredictionHighlight();
+  }
+
+  if (showToastMessage) {
+    showToast("Active reporting workspace reset. Ready for new incident complaint intake.", "info");
+  }
+}
+
+/**
+ * Attaches event listeners to all Report New Case / Reset workspace buttons.
+ */
+export function setupWorkspaceResetListeners() {
+  const btnReportHero = document.getElementById("btnReportNewCaseHero");
+  const btnReportIntake = document.getElementById("btnReportNewCaseIntake");
+  const btnCitizenReportNew = document.getElementById("btnCitizenReportNew");
+  const btnFinalOutcomeNewReport = document.getElementById("btnFinalOutcomeNewReport");
+
+  if (btnReportHero) {
+    btnReportHero.addEventListener("click", () => resetReportingWorkspace(true));
+  }
+  if (btnReportIntake) {
+    btnReportIntake.addEventListener("click", () => resetReportingWorkspace(true));
+  }
+  if (btnCitizenReportNew) {
+    btnCitizenReportNew.addEventListener("click", () => resetReportingWorkspace(true));
+  }
+  if (btnFinalOutcomeNewReport) {
+    btnFinalOutcomeNewReport.addEventListener("click", () => resetReportingWorkspace(true));
+  }
+}
+
+/**
  * Switch operational workspace console mode (reporting vs investigator).
  */
 export async function applyConsoleMode(role) {
@@ -2602,21 +2768,29 @@ export async function applyConsoleMode(role) {
       if (defaultTabBtn) defaultTabBtn.click();
     }
 
-    // Citizen tracks their own case
+    // Citizen tracks their own active case
+    const workspaceState = sessionStorage.getItem("citizen_workspace_state");
     const savedCitizenCaseId = sessionStorage.getItem("citizen_active_case_id");
-    if (window.currentActivePrediction && window.currentActivePrediction.case_id === savedCitizenCaseId) {
-      if (placeholderCard) placeholderCard.style.display = "none";
-      if (forecastCard) forecastCard.style.display = "block";
-      startCitizenPolling(savedCitizenCaseId);
-    } else if (savedCitizenCaseId) {
-      await loadCitizenCase(savedCitizenCaseId);
-      startCitizenPolling(savedCitizenCaseId);
+
+    if (workspaceState === "new" || !savedCitizenCaseId) {
+      resetReportingWorkspace(false);
     } else {
-      if (placeholderCard) placeholderCard.style.display = "flex";
-      if (forecastCard) forecastCard.style.display = "none";
-      if (placeholderTitle) placeholderTitle.innerText = "Awaiting Incident Complaint Intake";
-      if (placeholderText) {
-        placeholderText.innerText = "Select an operational scenario preset above or submit complaint parameters to trigger calibrated spatial forecasting, tactical triage, and field patrol routing.";
+      try {
+        const c = await API.getCase(savedCitizenCaseId);
+        if (c && (c.case_status === "RESOLVED" || c.case_status === "CLOSED")) {
+          // Closed cases must not be resurrected into a fresh reporting workspace
+          sessionStorage.removeItem("citizen_active_case_id");
+          sessionStorage.setItem("citizen_workspace_state", "new");
+          resetReportingWorkspace(false);
+        } else if (c) {
+          // In-progress active case: restore and poll
+          await loadCitizenCase(savedCitizenCaseId);
+          startCitizenPolling(savedCitizenCaseId);
+        } else {
+          resetReportingWorkspace(false);
+        }
+      } catch (err) {
+        resetReportingWorkspace(false);
       }
     }
   }

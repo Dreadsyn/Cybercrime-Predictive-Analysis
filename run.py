@@ -9,11 +9,15 @@ Usage:
 import os
 import sys
 import uvicorn
+from backend.app.database import auto_init_database
 
 if __name__ == "__main__":
+    auto_init_database()
+
     port = int(os.environ.get("PORT", 8000))
     default_host = "0.0.0.0" if "PORT" in os.environ else "127.0.0.1"
     host = os.environ.get("HOST", default_host)
+
 
     print("=" * 80)
     print("Starting Cybercrime Predictive Analytics Server...")

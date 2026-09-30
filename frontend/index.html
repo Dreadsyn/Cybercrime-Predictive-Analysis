@@ -130,9 +130,12 @@
 
       <!-- Complaint Intake Section (Active in Case Reporting Console) -->
       <div id="intakeFormSection">
-        <div class="card-heading">
+        <div class="card-heading" style="display:flex; justify-content:space-between; align-items:center;">
           <span class="heading-title" id="intakeHeadingTitle">Predictive Incident Triage</span>
-          <span style="font-size: 0.7rem; color: var(--text-dim); font-weight: normal;">Scenario Presets:</span>
+          <button type="button" id="btnReportNewCaseIntake" class="btn-action-ghost" style="font-size: 0.72rem; padding: 2px 8px; height: 26px;" title="Reset active workspace to a blank complaint">
+            <svg class="btn-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            <span>Report New Case</span>
+          </button>
         </div>
 
         <!-- Quick Preset Scenario Chips -->
@@ -170,7 +173,7 @@
             </div>
             <div class="input-box">
               <label for="reported_amount">Reported Loss Amount (&#8377;)</label>
-              <input type="number" id="reported_amount" name="reported_amount" value="85000" min="1000" step="500" required>
+              <input type="number" id="reported_amount" name="reported_amount" placeholder="e.g. 85000" min="1000" step="500" required>
               <span class="field-error" id="err_reported_amount"></span>
             </div>
           </div>
@@ -231,12 +234,12 @@
           <div class="form-row-2">
             <div class="input-box">
               <label for="reporting_delay_mins">Reporting Delay (Mins)</label>
-              <input type="number" id="reporting_delay_mins" name="reporting_delay_mins" value="25" min="5" max="720" required>
+              <input type="number" id="reporting_delay_mins" name="reporting_delay_mins" placeholder="e.g. 25" min="5" max="720" required>
               <span class="field-error" id="err_reporting_delay_mins"></span>
             </div>
             <div class="input-box">
               <label for="incident_hour">Incident Hour (0–23)</label>
-              <input type="number" id="incident_hour" name="incident_hour" value="15" min="0" max="23" required>
+              <input type="number" id="incident_hour" name="incident_hour" placeholder="0–23" min="0" max="23" required>
               <span class="field-error" id="err_incident_hour"></span>
             </div>
           </div>
@@ -312,6 +315,10 @@
             </div>
           </div>
           <div class="hero-header-actions">
+            <button type="button" id="btnReportNewCaseHero" class="btn-action-ghost" style="display:none;" title="Start a fresh complaint report">
+              <svg class="btn-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+              <span>Report New Case</span>
+            </button>
             <button type="button" id="btnFocusTargetMap" class="btn-action-ghost" title="Focus Target ATM on Tactical Map">
               <svg class="btn-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
               <span>Focus Map</span>
@@ -351,9 +358,12 @@
             </div>
           </div>
           <!-- Citizen Case Tracking Notice (Visible in Case Reporting Console) -->
-          <div id="citizenTrackingNotice" class="citizen-tracking-notice" style="display:none;">
-            <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            <span id="citizenTrackingText">Complaint Logged &bull; Field patrol dispatch and operational interdiction are handled by law enforcement officers.</span>
+          <div id="citizenTrackingNotice" class="citizen-tracking-notice" style="display:none; justify-content:space-between; align-items:center; width:100%;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span id="citizenTrackingText">Complaint Logged &bull; Field patrol dispatch and operational interdiction are handled by law enforcement officers.</span>
+            </div>
+            <button type="button" id="btnCitizenReportNew" class="btn-op-secondary" style="font-size:0.72rem; padding:3px 8px; margin-left:auto; white-space:nowrap;" title="Clear workspace and report another incident">+ Report New Case</button>
           </div>
         </div>
 
@@ -395,6 +405,12 @@
           <div class="report-notes-box">
             <div class="report-notes-label">Investigator Debrief Remarks:</div>
             <div class="report-notes-content" id="reportNotes">No remarks recorded.</div>
+          </div>
+          <div style="margin-top: 12px; display:flex; justify-content:flex-end;">
+            <button type="button" id="btnFinalOutcomeNewReport" class="btn-op-secondary" style="display:inline-flex; align-items:center; gap:6px;" title="Clear workspace and report another incident">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              <span>Report New Incident</span>
+            </button>
           </div>
         </div>
 
